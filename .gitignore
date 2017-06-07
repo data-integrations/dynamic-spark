@@ -1,0 +1,7 @@
+# Intellij Files & Dir #
+*.iml
+*.ipr
+*.iws
+.DS_Store
+.idea
+target

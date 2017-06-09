@@ -14,17 +14,23 @@ of the join result using Spark SQL.
 Properties
 ----------
 **scalaCode** Spark code in Scala defining how to transform RDD to RDD. 
-The code must implement a function called ``transform``, which the signature should either be
+The code must implement a function called ``transform``, whose signature should be one of:
+
+    def transform(df: DataFrame) : DataFrame
+
+    def transform(df: DataFrame, context: SparkExecutionPluginContext) : DataFrame
+    
+The input ``DataFrame`` has the same schema as the input schema to this stage and the ``transform`` method
+should return a ``DataFrame`` that has the same schema as the output schema setup for this stage.
+Using the ``SparkExecutionPluginContext``, you can access CDAP
+entities such as Stream and Dataset, as well as providing access to the underlying ``SparkContext`` in use.
+ 
+Operating on lower level ``RDD`` is also possible by using the one of the following forms of the ``transform`` method:
 
     def transform(rdd: RDD[StructuredRecord]) : RDD[StructuredRecord]
 
-or
-
     def transform(rdd: RDD[StructuredRecord], context: SparkExecutionPluginContext) : RDD[StructuredRecord]
-    
-In the latter case, using the ``SparkExecutionPluginContext`` can access CDAP
-entities such as Stream and Dataset, as well as providing access to the underlying ``SparkContext`` in use.
-
+   
 For example:
 
     def transform(rdd: RDD[StructuredRecord], context: SparkExecutionPluginContext) : RDD[StructuredRecord] = {

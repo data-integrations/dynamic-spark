@@ -11,7 +11,7 @@
           "label": "Scala",
           "name": "scalaCode",
           "widget-attributes": {
-            "default": "def transform(rdd: RDD[StructuredRecord]) : RDD[StructuredRecord] = {\n  rdd\n}"
+            "default": "def transform(df: DataFrame) : DataFrame = {\n  df\n}"
           }
         }
       ]

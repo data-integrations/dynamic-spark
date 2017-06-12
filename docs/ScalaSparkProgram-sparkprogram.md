@@ -43,4 +43,9 @@ performs a simple word count logic and logs the result can be written as:
       val LOG = LoggerFactory.getLogger(getClass())
     }
  
+**dependencies** Extra dependencies for the Spark program.
+It is a ',' separated list of URI for the location of dependency jars.
+A path can be ended with an asterisk '*' as a wildcard, in which all files with extension '.jar' under the
+parent path will be included.
+ 
 Please refer to the [CDAP documentation](https://docs.cask.co/cdap/current/en/developers-manual/building-blocks/spark-programs.html#cdap-spark-program) on the enhancements that CDAP brings to Spark.

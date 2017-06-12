@@ -28,9 +28,18 @@ import co.cask.cdap.api.spark.SparkExecutionContext;
 import co.cask.cdap.api.spark.SparkMain;
 import co.cask.cdap.api.spark.dynamic.CompilationFailureException;
 import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.Callable;
 import javax.annotation.Nullable;
 
@@ -42,22 +51,37 @@ import javax.annotation.Nullable;
 @Description("Executes user-provided Spark program")
 public class ScalaSparkProgram implements JavaSparkMain {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ScalaSparkProgram.class);
+
   private final Config config;
 
-  public ScalaSparkProgram(Config config) throws CompilationFailureException {
+  public ScalaSparkProgram(Config config) throws CompilationFailureException, IOException {
     this.config = config;
 
-    if (!config.containsMacro("scalaCode")) {
+    if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")) {
       // Since we don't really be able to distinguish whether it is configure time or runtime,
       // we have to compile here using an explicitly constructed SparkInterpreter and then compile again
       // using SparkInterpreter in the run method
       SparkInterpreter interpreter = SparkCompilers.createInterpreter();
       if (interpreter != null) {
-        interpreter.compile(config.getScalaCode());
+        try {
+          File dir = config.getDependencies() == null ? null : Files.createTempDirectory("sparkprogram").toFile();
+          try {
+            if (config.getDependencies() != null) {
+              SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+            }
 
-        // Just create the callable without calling it for validating the class and method needed exists.
-        if (!config.containsMacro("mainClass")) {
-          getMethodCallable(interpreter.getClassLoader(), config.getMainClass(), null);
+            interpreter.compile(config.getScalaCode());
+
+            // Just create the callable without calling it for validating the class and method needed exists.
+            if (!config.containsMacro("mainClass")) {
+              getMethodCallable(interpreter.getClassLoader(), config.getMainClass(), null);
+            }
+          } finally {
+            deleteDir(dir);
+          }
+        } finally {
+          interpreter.close();
         }
       }
     }
@@ -65,9 +89,15 @@ public class ScalaSparkProgram implements JavaSparkMain {
 
   @Override
   public void run(JavaSparkExecutionContext sec) throws Exception {
+    File dir = config.getDependencies() == null ? null : Files.createTempDirectory("sparkprogram").toFile();
     try (SparkInterpreter interpreter = sec.createInterpreter()) {
+      if (config.getDependencies() != null) {
+        SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+      }
       interpreter.compile(config.getScalaCode());
       getMethodCallable(interpreter.getClassLoader(), config.getMainClass(), sec).call();
+    } finally {
+      deleteDir(dir);
     }
   }
 
@@ -136,6 +166,32 @@ public class ScalaSparkProgram implements JavaSparkMain {
   }
 
   /**
+   * Recursively delete a directory.
+   */
+  public static void deleteDir(@Nullable File dir) {
+    if (dir == null) {
+      return;
+    }
+    try {
+      Files.walkFileTree(dir.toPath(), new SimpleFileVisitor<Path>() {
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+          Files.deleteIfExists(file);
+          return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+          Files.deleteIfExists(dir);
+          return FileVisitResult.CONTINUE;
+        }
+      });
+    } catch (IOException e) {
+      LOG.warn("Failed to cleanup temporary directory {}", dir, e);
+    }
+  }
+
+  /**
    * Plugin configuration
    */
   public static final class Config extends PluginConfig {
@@ -146,13 +202,24 @@ public class ScalaSparkProgram implements JavaSparkMain {
 
     @Description(
       "The source code of the Spark program written in Scala. " +
-      "The content must be a valid Scala source file.")
+        "The content must be a valid Scala source file.")
     @Macro
     private final String scalaCode;
 
-    public Config(String scalaCode, String mainClass) {
+    @Description(
+      "Extra dependencies for the Spark program. " +
+        "It is a ',' separated list of URI for the location of dependency jars. " +
+        "A path can be ended with an asterisk '*' as a wildcard, in which all files with extension '.jar' under the " +
+        "parent path will be included."
+    )
+    @Macro
+    @Nullable
+    private final String dependencies;
+
+    public Config(String scalaCode, String mainClass, @Nullable String dependencies) {
       this.scalaCode = scalaCode;
       this.mainClass = mainClass;
+      this.dependencies = dependencies;
     }
 
     public String getScalaCode() {
@@ -161,6 +228,11 @@ public class ScalaSparkProgram implements JavaSparkMain {
 
     public String getMainClass() {
       return mainClass;
+    }
+
+    @Nullable
+    public String getDependencies() {
+      return dependencies;
     }
   }
 }

@@ -24,15 +24,19 @@ import co.cask.cdap.api.data.format.StructuredRecord;
 import co.cask.cdap.api.data.schema.Schema;
 import co.cask.cdap.api.plugin.PluginConfig;
 import co.cask.cdap.api.spark.dynamic.CompilationFailureException;
-import co.cask.cdap.api.spark.dynamic.SparkCompiler;
 import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
 import co.cask.cdap.etl.api.PipelineConfigurer;
 import co.cask.cdap.etl.api.StageConfigurer;
 import co.cask.cdap.etl.api.batch.SparkCompute;
 import co.cask.cdap.etl.api.batch.SparkExecutionPluginContext;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
-import scala.reflect.ClassTag$;
+import org.apache.spark.sql.DataFrame;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SQLContext;
+import org.apache.spark.sql.types.StructType;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -53,13 +57,22 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   private static final String PACKAGE_NAME = "co.cask.hydrator.plugin.spark.dynamic.generated";
   private static final String CLASS_NAME = "UserSparkCompute";
   private static final String FULL_CLASS_NAME = PACKAGE_NAME + "." + CLASS_NAME;
+  private static final Class<?>[][] ACCEPTABLE_PARAMETER_TYPES = new Class<?>[][] {
+    { RDD.class, SparkExecutionPluginContext.class },
+    { RDD.class },
+    { DataFrame.class, SparkExecutionPluginContext.class},
+    { DataFrame.class }
+  };
 
-  private final Config config;
+  private final ThreadLocal<SQLContext> sqlContextThreadLocal = new InheritableThreadLocal<SQLContext>();
+
+  private final transient Config config;
   // A strong reference is needed to keep the compiled classes around
   @SuppressWarnings("FieldCanBeLocal")
-  private SparkInterpreter interpreter;
-  private Method method;
-  private boolean takeContext;
+  private transient SparkInterpreter interpreter;
+  private transient Method method;
+  private transient boolean isDataFrame;
+  private transient boolean takeContext;
 
   public ScalaSparkCompute(Config config) {
     this.config = config;
@@ -83,6 +96,15 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       if (interpreter != null) {
         try {
           interpreter.compile(generateSourceClass());
+
+          // Make sure it has a valid transform method
+          Method method = getTransformMethod(interpreter.getClassLoader());
+
+          // If the method takes DataFrame, make sure it has input schema
+          if (method.getParameterTypes()[0].equals(DataFrame.class) && stageConfigurer.getInputSchema() == null) {
+            throw new IllegalArgumentException("Missing input schema for transformation using DataFrame");
+          }
+
         } catch (CompilationFailureException e) {
           throw new IllegalArgumentException(e.getMessage(), e);
         }
@@ -93,6 +115,47 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   @Override
   public void initialize(SparkExecutionPluginContext context) throws Exception {
     interpreter = context.createSparkInterpreter();
+    interpreter.compile(generateSourceClass());
+    method = getTransformMethod(interpreter.getClassLoader());
+    isDataFrame = method.getParameterTypes()[0].equals(DataFrame.class);
+    takeContext = method.getParameterTypes().length == 2;
+  }
+
+  @Override
+  public JavaRDD<StructuredRecord> transform(SparkExecutionPluginContext context,
+                                             JavaRDD<StructuredRecord> javaRDD) throws Exception {
+    // RDD case
+    if (!isDataFrame) {
+      if (takeContext) {
+        //noinspection unchecked
+        return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd(), context)).toJavaRDD();
+      } else {
+        //noinspection unchecked
+        return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd())).toJavaRDD();
+      }
+    }
+
+    // DataFrame case
+    SQLContext sqlContext = getSQLContext(context.getSparkContext().sc());
+
+    StructType rowType = SparkDataFrames.toStructType(context.getInputSchema());
+    JavaRDD<Row> rowRDD = javaRDD.map(new RecordToRow(rowType));
+
+    DataFrame dataFrame = sqlContext.createDataFrame(rowRDD, rowType);
+    DataFrame result = (DataFrame) (takeContext ?
+      method.invoke(null, dataFrame, context) : method.invoke(null, dataFrame));
+
+    // Convert the DataFrame back to RDD<StructureRecord>
+    Schema outputSchema = context.getOutputSchema();
+    if (outputSchema == null) {
+      // If there is no output schema configured, derive it from the DataFrame
+      // Otherwise, assume the DataFrame has the correct schema already
+      outputSchema = SparkDataFrames.toSchema(result.schema());
+    }
+    return result.toJavaRDD().map(new RowToRecord(outputSchema));
+  }
+
+  private String generateSourceClass() {
     StringWriter writer = new StringWriter();
 
     try (PrintWriter sourceWriter = new PrintWriter(writer, false)) {
@@ -112,77 +175,6 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       sourceWriter.println("}");
     }
 
-    interpreter.compile(writer.toString());
-
-    // Use reflection to load the class and get the transform method
-    try {
-      Class<?> computeClass = interpreter.getClassLoader().loadClass(FULL_CLASS_NAME);
-
-      // First see if it has the transform(RDD[StructuredRecord], SparkExecutionPluginContext) method
-      try {
-        method = computeClass.getDeclaredMethod("transform", RDD.class, SparkExecutionPluginContext.class);
-        takeContext = true;
-      } catch (NoSuchMethodException e) {
-        // Try to find the transform(RDD[StructuredRecord])
-        method = computeClass.getDeclaredMethod("transform", RDD.class);
-        takeContext = false;
-      }
-
-      Type[] parameterTypes = method.getGenericParameterTypes();
-
-      // The first parameter should be of type RDD[StructuredRecord]
-      validateRDDType(parameterTypes[0],
-                      "The first parameter of the 'transform' method should have type as 'RDD[StructuredRecord]'");
-
-      // If it has second parameter, then must be SparkExecutionPluginContext
-      if (takeContext && !SparkExecutionPluginContext.class.equals(parameterTypes[1])) {
-        throw new IllegalArgumentException(
-          "The second parameter of the 'transform' method should have type as SparkExecutionPluginContext");
-      }
-
-      // The return type of the method must be RDD[StructuredRecord]
-      validateRDDType(method.getGenericReturnType(),
-                      "The return type of the 'transform' method should be 'RDD[StructuredRecord]'");
-
-      method.setAccessible(true);
-    } catch (NoSuchMethodException e) {
-      throw new IllegalArgumentException(
-        "Missing a `transform` method that has signature either as " +
-        "'def transform(rdd: RDD[StructuredRecord]) : RDD[StructuredRecord]' or " +
-        "'def transform(rdd: RDD[StructuredRecord], context: SparkExecutionPluginContext) : RDD[StructuredRecord]'", e);
-    }
-  }
-
-  @Override
-  public JavaRDD<StructuredRecord> transform(SparkExecutionPluginContext sparkExecutionPluginContext,
-                                             JavaRDD<StructuredRecord> javaRDD) throws Exception {
-    RDD<StructuredRecord> rdd;
-    if (takeContext) {
-      //noinspection unchecked
-      rdd = (RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd(), sparkExecutionPluginContext);
-    } else {
-      //noinspection unchecked
-      rdd = (RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd());
-    }
-    return JavaRDD.fromRDD(rdd, ClassTag$.MODULE$.<StructuredRecord>apply(StructuredRecord.class));
-  }
-
-  private String generateSourceClass() {
-    StringWriter writer = new StringWriter();
-
-    try (PrintWriter sourceWriter = new PrintWriter(writer, false)) {
-      sourceWriter.println("package " + PACKAGE_NAME);
-      sourceWriter.println("import co.cask.cdap.api.data.format._");
-      sourceWriter.println("import co.cask.cdap.api.data.schema._");
-      sourceWriter.println("import co.cask.cdap.etl.api.batch._");
-      sourceWriter.println("import org.apache.spark._");
-      sourceWriter.println("import org.apache.spark.api.java._");
-      sourceWriter.println("import org.apache.spark.rdd._");
-      sourceWriter.println("import org.apache.spark.SparkContext._");
-      sourceWriter.println("object " + CLASS_NAME + " {");
-      sourceWriter.println(config.getScalaCode());
-      sourceWriter.println("}");
-    }
     return writer.toString();
   }
 
@@ -200,6 +192,88 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     Type[] typeParams = ((ParameterizedType) rddType).getActualTypeArguments();
     if (typeParams.length < 1 || !typeParams[0].equals(StructuredRecord.class)) {
       throw new IllegalArgumentException(errorMessage);
+    }
+  }
+
+  private SQLContext getSQLContext(SparkContext sc) {
+    SQLContext sqlContext = sqlContextThreadLocal.get();
+    if (sqlContext != null && !sqlContext.sparkContext().isStopped()) {
+      return sqlContext;
+    }
+
+    synchronized (this) {
+      sqlContext = sqlContextThreadLocal.get();
+      if (sqlContext == null || sqlContext.sparkContext().isStopped()) {
+        sqlContext = new SQLContext(sc);
+        sqlContextThreadLocal.set(sqlContext);
+      }
+    }
+
+    return sqlContext;
+  }
+
+  private Method getTransformMethod(ClassLoader classLoader) {
+    // Use reflection to load the class and get the transform method
+    try {
+      Class<?> computeClass = classLoader.loadClass(FULL_CLASS_NAME);
+
+      // Find which method to call
+      Method method = null;
+      for (Class<?>[] paramTypes : ACCEPTABLE_PARAMETER_TYPES) {
+        method = tryFindMethod(computeClass, "transform", paramTypes);
+        if (method != null) {
+          break;
+        }
+      }
+
+      if (method == null) {
+        throw new IllegalArgumentException(
+          "Missing a `transform` method that has signature in one of the following form\n" +
+          "def transform(rdd: RDD[StructuredRecord]) : RDD[StructuredRecord]\n" +
+          "def transform(rdd: RDD[StructuredRecord], context: SparkExecutionPluginContext) : RDD[StructuredRecord]\n" +
+          "def transform(dataframe: DataFrame) : DataFrame\n" +
+          "def transform(dataframe: DataFrame, context: SparkExecutionPluginContext) : DataFrame");
+      }
+
+      Type[] parameterTypes = method.getGenericParameterTypes();
+
+      // The first parameter should be of type RDD[StructuredRecord] if it takes RDD
+      if (!parameterTypes[0].equals(DataFrame.class)) {
+        validateRDDType(parameterTypes[0],
+                        "The first parameter of the 'transform' method should have type as 'RDD[StructuredRecord]'");
+      }
+
+      // If it has second parameter, then must be SparkExecutionPluginContext
+      if (parameterTypes.length == 2 && !SparkExecutionPluginContext.class.equals(parameterTypes[1])) {
+        throw new IllegalArgumentException(
+          "The second parameter of the 'transform' method should have type as SparkExecutionPluginContext");
+      }
+
+      // The return type of the method must be RDD[StructuredRecord] if it takes RDD
+      // Or it must be DataFrame if it takes DataFrame
+      if (parameterTypes[0].equals(DataFrame.class)) {
+        if (!method.getReturnType().equals(DataFrame.class)) {
+          throw new IllegalArgumentException("The return type of the 'transform' method should be 'DataFrame'");
+        }
+      } else {
+        validateRDDType(method.getGenericReturnType(),
+                        "The return type of the 'transform' method should be 'RDD[StructuredRecord]'");
+      }
+
+      method.setAccessible(true);
+      return method;
+    } catch (ClassNotFoundException e) {
+      // This shouldn't happen since we define the class name.
+      throw new IllegalArgumentException(e);
+    }
+  }
+
+  @Nullable
+  private Method tryFindMethod(Class<?> cls, String name, Class<?>...parameterTypes) {
+    try {
+      return cls.getDeclaredMethod(name, parameterTypes);
+    } catch (NoSuchMethodException e) {
+      return null;
     }
   }
 
@@ -241,6 +315,40 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Nullable
     public String getSchema() {
       return schema;
+    }
+  }
+
+  /**
+   * Function to map from {@link StructuredRecord} to {@link Row}.
+   */
+  public static final class RecordToRow implements Function<StructuredRecord, Row> {
+
+    private final StructType rowType;
+
+    public RecordToRow(StructType rowType) {
+      this.rowType = rowType;
+    }
+
+    @Override
+    public Row call(StructuredRecord record) throws Exception {
+      return SparkDataFrames.toRow(record, rowType);
+    }
+  }
+
+  /**
+   * Function to map from {@link Row} to {@link StructuredRecord}.
+   */
+  public static final class RowToRecord implements Function<Row, StructuredRecord> {
+
+    private final Schema schema;
+
+    public RowToRecord(Schema schema) {
+      this.schema = schema;
+    }
+
+    @Override
+    public StructuredRecord call(Row row) throws Exception {
+      return SparkDataFrames.fromRow(row, schema);
     }
   }
 }

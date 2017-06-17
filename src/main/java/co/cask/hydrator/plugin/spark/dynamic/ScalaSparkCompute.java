@@ -54,9 +54,7 @@ import javax.annotation.Nullable;
 @Description("Executes user-provided Spark code written in Scala that performs RDD to RDD transformation")
 public class ScalaSparkCompute extends SparkCompute<StructuredRecord, StructuredRecord> {
 
-  private static final String PACKAGE_NAME = "co.cask.hydrator.plugin.spark.dynamic.generated";
-  private static final String CLASS_NAME = "UserSparkCompute";
-  private static final String FULL_CLASS_NAME = PACKAGE_NAME + "." + CLASS_NAME;
+  private static final String CLASS_NAME_PREFIX = "co.cask.hydrator.plugin.spark.dynamic.generated.UserSparkCompute$";
   private static final Class<?>[][] ACCEPTABLE_PARAMETER_TYPES = new Class<?>[][] {
     { RDD.class, SparkExecutionPluginContext.class },
     { RDD.class },
@@ -95,10 +93,12 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       SparkInterpreter interpreter = SparkCompilers.createInterpreter();
       if (interpreter != null) {
         try {
-          interpreter.compile(generateSourceClass());
+          // We don't need the actual stage name as this only happen in deployment time for compilation check.
+          String className = generateClassName("dummy");
+          interpreter.compile(generateSourceClass(className));
 
           // Make sure it has a valid transform method
-          Method method = getTransformMethod(interpreter.getClassLoader());
+          Method method = getTransformMethod(interpreter.getClassLoader(), className);
 
           // If the method takes DataFrame, make sure it has input schema
           if (method.getParameterTypes()[0].equals(DataFrame.class) && stageConfigurer.getInputSchema() == null) {
@@ -114,9 +114,10 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
 
   @Override
   public void initialize(SparkExecutionPluginContext context) throws Exception {
+    String className = generateClassName(context.getStageName());
     interpreter = context.createSparkInterpreter();
-    interpreter.compile(generateSourceClass());
-    method = getTransformMethod(interpreter.getClassLoader());
+    interpreter.compile(generateSourceClass(className));
+    method = getTransformMethod(interpreter.getClassLoader(), className);
     isDataFrame = method.getParameterTypes()[0].equals(DataFrame.class);
     takeContext = method.getParameterTypes().length == 2;
   }
@@ -155,11 +156,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     return result.toJavaRDD().map(new RowToRecord(outputSchema));
   }
 
-  private String generateSourceClass() {
+  private String generateSourceClass(String className) {
     StringWriter writer = new StringWriter();
 
     try (PrintWriter sourceWriter = new PrintWriter(writer, false)) {
-      sourceWriter.println("package " + PACKAGE_NAME);
+      sourceWriter.println("package " + className.substring(0, className.lastIndexOf('.')));
       // Includes some commonly used imports.
       sourceWriter.println("import co.cask.cdap.api.data.format._");
       sourceWriter.println("import co.cask.cdap.api.data.schema._");
@@ -170,7 +171,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       sourceWriter.println("import org.apache.spark.sql._");
       sourceWriter.println("import org.apache.spark.SparkContext._");
       sourceWriter.println("import scala.collection.JavaConversions._");
-      sourceWriter.println("object " + CLASS_NAME + " {");
+      sourceWriter.println("object " + className.substring(className.lastIndexOf('.') + 1) + " {");
       sourceWriter.println(config.getScalaCode());
       sourceWriter.println("}");
     }
@@ -212,10 +213,10 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     return sqlContext;
   }
 
-  private Method getTransformMethod(ClassLoader classLoader) {
+  private Method getTransformMethod(ClassLoader classLoader, String className) {
     // Use reflection to load the class and get the transform method
     try {
-      Class<?> computeClass = classLoader.loadClass(FULL_CLASS_NAME);
+      Class<?> computeClass = classLoader.loadClass(className);
 
       // Find which method to call
       Method method = null;
@@ -275,6 +276,19 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     } catch (NoSuchMethodException e) {
       return null;
     }
+  }
+
+  private String generateClassName(String stageName) {
+    // Hex encode any non-alphanumeric character in the stage name
+    StringBuilder nameBuilder = new StringBuilder(CLASS_NAME_PREFIX);
+    for (char c : stageName.toCharArray()) {
+      if (Character.isLetter(c) || Character.isDigit(c)) {
+        nameBuilder.append(c);
+      } else {
+        nameBuilder.append(String.format("%02X", (int) c));
+      }
+    }
+    return nameBuilder.toString();
   }
 
   /**

@@ -22,7 +22,7 @@
 
   <groupId>co.cask.hydrator</groupId>
   <artifactId>dynamic-spark</artifactId>
-  <version>1.7.2</version>
+  <version>1.7.3</version>
 
   <properties>
     <!-- properties for script build step that creates the config files for the artifacts -->

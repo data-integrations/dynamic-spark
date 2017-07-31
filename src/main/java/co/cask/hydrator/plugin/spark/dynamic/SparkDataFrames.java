@@ -353,6 +353,7 @@ public final class SparkDataFrames {
 
           // If the value is null for the field, just continue without setting anything to the StructuredRecord
           if (row.isNullAt(idx)) {
+            idx++;
             continue;
           }
 

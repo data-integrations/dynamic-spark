@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "spec-version": "1.5"
+    "spec-version": "1.4"
   },
   "display-name": "Spark",
   "configuration-groups": [

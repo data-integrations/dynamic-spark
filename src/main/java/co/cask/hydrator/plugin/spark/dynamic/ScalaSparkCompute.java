@@ -25,6 +25,7 @@ import co.cask.cdap.api.data.schema.Schema;
 import co.cask.cdap.api.plugin.PluginConfig;
 import co.cask.cdap.api.spark.dynamic.CompilationFailureException;
 import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
+import co.cask.cdap.api.spark.sql.DataFrames;
 import co.cask.cdap.etl.api.PipelineConfigurer;
 import co.cask.cdap.etl.api.StageConfigurer;
 import co.cask.cdap.etl.api.batch.SparkCompute;
@@ -62,7 +63,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     { DataFrame.class }
   };
 
-  private final ThreadLocal<SQLContext> sqlContextThreadLocal = new InheritableThreadLocal<SQLContext>();
+  private final ThreadLocal<SQLContext> sqlContextThreadLocal = new InheritableThreadLocal<>();
 
   private final transient Config config;
   // A strong reference is needed to keep the compiled classes around
@@ -120,6 +121,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     method = getTransformMethod(interpreter.getClassLoader(), className);
     isDataFrame = method.getParameterTypes()[0].equals(DataFrame.class);
     takeContext = method.getParameterTypes().length == 2;
+
+    // Input schema shouldn't be null
+    if (isDataFrame && context.getInputSchema() == null) {
+      throw new IllegalArgumentException("Input schema must be provided for using DataFrame in Spark Compute");
+    }
   }
 
   @Override
@@ -137,9 +143,15 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     }
 
     // DataFrame case
+    Schema inputSchema = context.getInputSchema();
+    if (inputSchema == null) {
+      // Should already been checked in initialize. This is to safeguard in case the call sequence changed in future.
+      throw new IllegalArgumentException("Input schema must be provided for using DataFrame in Spark Compute");
+    }
+
     SQLContext sqlContext = getSQLContext(context.getSparkContext().sc());
 
-    StructType rowType = SparkDataFrames.toStructType(context.getInputSchema());
+    StructType rowType = DataFrames.toDataType(inputSchema);
     JavaRDD<Row> rowRDD = javaRDD.map(new RecordToRow(rowType));
 
     DataFrame dataFrame = sqlContext.createDataFrame(rowRDD, rowType);
@@ -151,7 +163,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     if (outputSchema == null) {
       // If there is no output schema configured, derive it from the DataFrame
       // Otherwise, assume the DataFrame has the correct schema already
-      outputSchema = SparkDataFrames.toSchema(result.schema());
+      outputSchema = DataFrames.toSchema(result.schema());
     }
     return result.toJavaRDD().map(new RowToRecord(outputSchema));
   }
@@ -345,7 +357,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
 
     @Override
     public Row call(StructuredRecord record) throws Exception {
-      return SparkDataFrames.toRow(record, rowType);
+      return DataFrames.toRow(record, rowType);
     }
   }
 
@@ -362,7 +374,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
 
     @Override
     public StructuredRecord call(Row row) throws Exception {
-      return SparkDataFrames.fromRow(row, schema);
+      return DataFrames.fromRow(row, schema);
     }
   }
 }

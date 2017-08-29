@@ -11,6 +11,7 @@ Dyanmic Spark plugins allow writing and executing arbitrary Spark code written i
 
 * [Scala Spark Compute](docs/ScalaSparkCompute-sparkcompute.md)
 * [Scala Spark Program](docs/ScalaSparkProgram-sparkprogram.md)
+* [Python Spark Program](docs/PySparkProgram-sparkprogram.md)
 
 Build
 -----

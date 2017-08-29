@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "spec-version": "1.4"
+  },
+  "display-name" : "PySpark Program",
+  "configuration-groups": [
+    {
+      "label": "PySpark Program",
+      "properties": [
+        {
+          "widget-type": "python-editor",
+          "label": "Python",
+          "name": "pythonCode",
+          "widget-attributes": {
+            "default": "from pyspark import *\nfrom pyspark.sql import *\nfrom cdap.pyspark import SparkExecutionContext\n\nsec = SparkExecutionContext()\nsc = SparkContext()"
+          }
+        },
+        {
+          "widget-type": "dsv",
+          "label": "Extra python libraries",
+          "name": "pyFiles",
+          "widget-attributes": {
+            "delimiter": ","
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": [ ]
+}

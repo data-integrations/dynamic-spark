@@ -29,6 +29,15 @@
           "widget-attributes": {
             "delimiter": ","
           }
+        },
+        {
+          "widget-type": "select",
+          "label": "Compile at Deployment Time",
+          "name": "deployCompile",
+          "widget-attributes": {
+            "values" : ["true", "false"],
+            "default": "true"
+          }
         }
       ]
     }

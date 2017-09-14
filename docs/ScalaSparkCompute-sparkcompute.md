@@ -58,5 +58,8 @@ The following imports are included automatically and are ready for the user code
       import scala.collection.JavaConversions._
 
 
-**schema:** The schema of output objects. If no schema is given, it is assumed that the output
+**schema** The schema of output objects. If no schema is given, it is assumed that the output
 schema is the same as the input schema.
+
+**deployCompile** Specify whether the code will get validated during pipeline creation time. Setting this to `false`
+will skip the validation.

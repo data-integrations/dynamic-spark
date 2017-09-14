@@ -90,7 +90,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       throw new IllegalArgumentException("Unable to parse output schema " + config.getSchema(), e);
     }
 
-    if (!config.containsMacro("scalaCode")) {
+    if (!config.containsMacro("scalaCode") && Boolean.TRUE.equals(config.getDeployCompile())) {
       SparkInterpreter interpreter = SparkCompilers.createInterpreter();
       if (interpreter != null) {
         try {
@@ -329,9 +329,15 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Macro
     private final String schema;
 
-    public Config(String scalaCode, @Nullable String schema) {
+    @Description("Decide whether to perform code compilation at deployment time. It will be useful to turn it off " +
+      "in cases when some library classes are only available at run time, but not at deployment time.")
+    @Nullable
+    private final Boolean deployCompile;
+
+    public Config(String scalaCode, @Nullable String schema, @Nullable Boolean deployCompile) {
       this.scalaCode = scalaCode;
       this.schema = schema;
+      this.deployCompile = deployCompile;
     }
 
     public String getScalaCode() {
@@ -341,6 +347,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Nullable
     public String getSchema() {
       return schema;
+    }
+
+    @Nullable
+    public Boolean getDeployCompile() {
+      return deployCompile;
     }
   }
 

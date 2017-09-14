@@ -58,7 +58,8 @@ public class ScalaSparkProgram implements JavaSparkMain {
   public ScalaSparkProgram(Config config) throws CompilationFailureException, IOException {
     this.config = config;
 
-    if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")) {
+    if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")
+      && Boolean.TRUE.equals(config.getDeployCompile())) {
       // Since we don't really be able to distinguish whether it is configure time or runtime,
       // we have to compile here using an explicitly constructed SparkInterpreter and then compile again
       // using SparkInterpreter in the run method
@@ -216,10 +217,16 @@ public class ScalaSparkProgram implements JavaSparkMain {
     @Nullable
     private final String dependencies;
 
-    public Config(String scalaCode, String mainClass, @Nullable String dependencies) {
+    @Description("Decide whether to perform code compilation at deployment time. It will be useful to turn it off " +
+      "in cases when some library classes are only available at run time, but not at deployment time.")
+    @Nullable
+    private final Boolean deployCompile;
+
+    public Config(String scalaCode, String mainClass, @Nullable String dependencies, @Nullable Boolean deployCompile) {
       this.scalaCode = scalaCode;
       this.mainClass = mainClass;
       this.dependencies = dependencies;
+      this.deployCompile = deployCompile;
     }
 
     public String getScalaCode() {
@@ -233,6 +240,11 @@ public class ScalaSparkProgram implements JavaSparkMain {
     @Nullable
     public String getDependencies() {
       return dependencies;
+    }
+
+    @Nullable
+    public Boolean getDeployCompile() {
+      return deployCompile;
     }
   }
 }

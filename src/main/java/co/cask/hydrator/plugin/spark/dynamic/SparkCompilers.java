@@ -43,6 +43,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -74,6 +75,22 @@ public final class SparkCompilers {
         .loadClass("co.cask.cdap.app.runtime.spark.dynamic.AbstractSparkCompiler")
         .getDeclaredMethod("setClassPath", Settings.class)
         .invoke(null, new Settings());
+
+      // TODO: Remove this after CDAP-12743 is resolved
+      try {
+        Set<URL> urls = ClassLoaders.getClassLoaderURLs(settings.explicitParentLoader().get(),
+                                                        true, new LinkedHashSet<URL>());
+        StringBuilder cp = new StringBuilder();
+        String sep = "";
+        for (URL url : urls) {
+          cp.append(sep).append(new File(url.getPath()).getAbsolutePath());
+          sep = File.pathSeparator;
+        }
+        settings.classpath().v_$eq(cp.toString());
+      } catch (Exception e) {
+        // Ignore
+      }
+      // Done workaround for CDAP-12743
 
       Class<?> interpreterClass = classLoader
         .loadClass("co.cask.cdap.app.runtime.spark.dynamic.DefaultSparkInterpreter");

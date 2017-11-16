@@ -35,11 +35,7 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.Callable;
 import javax.annotation.Nullable;
 
@@ -79,7 +75,7 @@ public class ScalaSparkProgram implements JavaSparkMain {
               getMethodCallable(interpreter.getClassLoader(), config.getMainClass(), null);
             }
           } finally {
-            deleteDir(dir);
+            SparkCompilers.deleteDir(dir);
           }
         } finally {
           interpreter.close();
@@ -98,7 +94,7 @@ public class ScalaSparkProgram implements JavaSparkMain {
       interpreter.compile(config.getScalaCode());
       getMethodCallable(interpreter.getClassLoader(), config.getMainClass(), sec).call();
     } finally {
-      deleteDir(dir);
+      SparkCompilers.deleteDir(dir);
     }
   }
 
@@ -163,32 +159,6 @@ public class ScalaSparkProgram implements JavaSparkMain {
     } catch (ClassNotFoundException e) {
       throw new IllegalArgumentException("Main class " + mainClass +
                                            " provided by the 'mainClass' configuration does not exists.");
-    }
-  }
-
-  /**
-   * Recursively delete a directory.
-   */
-  public static void deleteDir(@Nullable File dir) {
-    if (dir == null) {
-      return;
-    }
-    try {
-      Files.walkFileTree(dir.toPath(), new SimpleFileVisitor<Path>() {
-        @Override
-        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-          Files.deleteIfExists(file);
-          return FileVisitResult.CONTINUE;
-        }
-
-        @Override
-        public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-          Files.deleteIfExists(dir);
-          return FileVisitResult.CONTINUE;
-        }
-      });
-    } catch (IOException e) {
-      LOG.warn("Failed to cleanup temporary directory {}", dir, e);
     }
   }
 

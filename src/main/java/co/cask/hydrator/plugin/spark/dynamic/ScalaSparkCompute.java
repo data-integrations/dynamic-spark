@@ -34,7 +34,6 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
-import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.types.DataType;
@@ -42,12 +41,14 @@ import org.apache.spark.sql.types.StructType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.nio.file.Files;
 import javax.annotation.Nullable;
 
 /**
@@ -96,10 +97,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       throw new IllegalArgumentException("Unable to parse output schema " + config.getSchema(), e);
     }
 
-    if (!config.containsMacro("scalaCode") && Boolean.TRUE.equals(config.getDeployCompile())) {
+    if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")
+      && Boolean.TRUE.equals(config.getDeployCompile())) {
       SparkInterpreter interpreter = SparkCompilers.createInterpreter();
       if (interpreter != null) {
+        File dir = null;
         try {
+          if (config.getDependencies() != null) {
+            dir = Files.createTempDirectory("sparkprogram").toFile();
+            SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+          }
           // We don't need the actual stage name as this only happen in deployment time for compilation check.
           String className = generateClassName("dummy");
           interpreter.compile(generateSourceClass(className));
@@ -114,6 +121,10 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
 
         } catch (CompilationFailureException e) {
           throw new IllegalArgumentException(e.getMessage(), e);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        } finally {
+          SparkCompilers.deleteDir(dir);
         }
       }
     }
@@ -123,8 +134,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   public void initialize(SparkExecutionPluginContext context) throws Exception {
     String className = generateClassName(context.getStageName());
     interpreter = context.createSparkInterpreter();
+    File dir = config.getDependencies() == null ? null : Files.createTempDirectory("sparkprogram").toFile();
+    try {
+      if (config.getDependencies() != null) {
+        SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+      }
     interpreter.compile(generateSourceClass(className));
     method = getTransformMethod(interpreter.getClassLoader(), className);
+    } finally {
+      SparkCompilers.deleteDir(dir);
+    }
     isDataFrame = method.getParameterTypes()[0].equals(DATAFRAME_TYPE);
     takeContext = method.getParameterTypes().length == 2;
 
@@ -329,6 +348,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Macro
     private final String scalaCode;
 
+    @Description(
+      "Extra dependencies for the Spark program. " +
+        "It is a ',' separated list of URI for the location of dependency jars. " +
+        "A path can be ended with an asterisk '*' as a wildcard, in which all files with extension '.jar' under the " +
+        "parent path will be included."
+    )
+    @Macro
+    @Nullable
+    private final String dependencies;
+
     @Description("The schema of output objects. If no schema is given, it is assumed that the output schema is " +
       "the same as the input schema.")
     @Nullable
@@ -340,9 +369,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Nullable
     private final Boolean deployCompile;
 
-    public Config(String scalaCode, @Nullable String schema, @Nullable Boolean deployCompile) {
+    public Config(String scalaCode, @Nullable String schema, @Nullable String dependencies,
+                  @Nullable Boolean deployCompile) {
       this.scalaCode = scalaCode;
       this.schema = schema;
+      this.dependencies = dependencies;
       this.deployCompile = deployCompile;
     }
 
@@ -353,6 +384,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Nullable
     public String getSchema() {
       return schema;
+    }
+
+    @Nullable
+    public String getDependencies() {
+      return dependencies;
     }
 
     @Nullable

@@ -16,12 +16,9 @@
           }
         },
         {
-          "widget-type": "dsv",
+          "widget-type": "csv",
           "label": "Extra python libraries",
           "name": "pyFiles",
-          "widget-attributes": {
-            "delimiter": ","
-          }
         }
       ]
     }

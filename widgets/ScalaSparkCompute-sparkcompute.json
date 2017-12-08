@@ -16,12 +16,9 @@
           }
         },
         {
-          "widget-type": "dsv",
+          "widget-type": "csv",
           "label": "Dependencies",
-          "name": "dependencies",
-          "widget-attributes": {
-            "delimiter": ","
-          }
+          "name": "dependencies"
         },
         {
           "widget-type": "select",

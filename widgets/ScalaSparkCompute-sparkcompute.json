@@ -16,6 +16,11 @@
           }
         },
         {
+          "widget-type": "csv",
+          "label": "Dependencies",
+          "name": "dependencies"
+        },
+        {
           "widget-type": "select",
           "label": "Compile at Deployment Time",
           "name": "deployCompile",

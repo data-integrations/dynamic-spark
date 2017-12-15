@@ -34,17 +34,21 @@ import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
-import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
+import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.nio.file.Files;
 import javax.annotation.Nullable;
 
 /**
@@ -55,12 +59,15 @@ import javax.annotation.Nullable;
 @Description("Executes user-provided Spark code written in Scala that performs RDD to RDD transformation")
 public class ScalaSparkCompute extends SparkCompute<StructuredRecord, StructuredRecord> {
 
+  private static final Logger LOG = LoggerFactory.getLogger(ScalaSparkCompute.class);
+
   private static final String CLASS_NAME_PREFIX = "co.cask.hydrator.plugin.spark.dynamic.generated.UserSparkCompute$";
+  private static final Class<?> DATAFRAME_TYPE = getDataFrameType();
   private static final Class<?>[][] ACCEPTABLE_PARAMETER_TYPES = new Class<?>[][] {
     { RDD.class, SparkExecutionPluginContext.class },
     { RDD.class },
-    { DataFrame.class, SparkExecutionPluginContext.class},
-    { DataFrame.class }
+    { DATAFRAME_TYPE, SparkExecutionPluginContext.class},
+    { DATAFRAME_TYPE }
   };
 
   private final ThreadLocal<SQLContext> sqlContextThreadLocal = new InheritableThreadLocal<>();
@@ -90,10 +97,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       throw new IllegalArgumentException("Unable to parse output schema " + config.getSchema(), e);
     }
 
-    if (!config.containsMacro("scalaCode") && Boolean.TRUE.equals(config.getDeployCompile())) {
+    if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")
+      && Boolean.TRUE.equals(config.getDeployCompile())) {
       SparkInterpreter interpreter = SparkCompilers.createInterpreter();
       if (interpreter != null) {
+        File dir = null;
         try {
+          if (config.getDependencies() != null) {
+            dir = Files.createTempDirectory("sparkprogram").toFile();
+            SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+          }
           // We don't need the actual stage name as this only happen in deployment time for compilation check.
           String className = generateClassName("dummy");
           interpreter.compile(generateSourceClass(className));
@@ -102,12 +115,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
           Method method = getTransformMethod(interpreter.getClassLoader(), className);
 
           // If the method takes DataFrame, make sure it has input schema
-          if (method.getParameterTypes()[0].equals(DataFrame.class) && stageConfigurer.getInputSchema() == null) {
+          if (method.getParameterTypes()[0].equals(DATAFRAME_TYPE) && stageConfigurer.getInputSchema() == null) {
             throw new IllegalArgumentException("Missing input schema for transformation using DataFrame");
           }
 
         } catch (CompilationFailureException e) {
           throw new IllegalArgumentException(e.getMessage(), e);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        } finally {
+          SparkCompilers.deleteDir(dir);
         }
       }
     }
@@ -117,9 +134,17 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   public void initialize(SparkExecutionPluginContext context) throws Exception {
     String className = generateClassName(context.getStageName());
     interpreter = context.createSparkInterpreter();
+    File dir = config.getDependencies() == null ? null : Files.createTempDirectory("sparkprogram").toFile();
+    try {
+      if (config.getDependencies() != null) {
+        SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+      }
     interpreter.compile(generateSourceClass(className));
     method = getTransformMethod(interpreter.getClassLoader(), className);
-    isDataFrame = method.getParameterTypes()[0].equals(DataFrame.class);
+    } finally {
+      SparkCompilers.deleteDir(dir);
+    }
+    isDataFrame = method.getParameterTypes()[0].equals(DATAFRAME_TYPE);
     takeContext = method.getParameterTypes().length == 2;
 
     // Input schema shouldn't be null
@@ -154,18 +179,18 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     StructType rowType = DataFrames.toDataType(inputSchema);
     JavaRDD<Row> rowRDD = javaRDD.map(new RecordToRow(rowType));
 
-    DataFrame dataFrame = sqlContext.createDataFrame(rowRDD, rowType);
-    DataFrame result = (DataFrame) (takeContext ?
-      method.invoke(null, dataFrame, context) : method.invoke(null, dataFrame));
+    Object dataFrame = sqlContext.createDataFrame(rowRDD, rowType);
+    Object result = takeContext ? method.invoke(null, dataFrame, context) : method.invoke(null, dataFrame);
 
     // Convert the DataFrame back to RDD<StructureRecord>
     Schema outputSchema = context.getOutputSchema();
     if (outputSchema == null) {
       // If there is no output schema configured, derive it from the DataFrame
       // Otherwise, assume the DataFrame has the correct schema already
-      outputSchema = DataFrames.toSchema(result.schema());
+      outputSchema = DataFrames.toSchema((DataType) invokeDataFrameMethod(result, "schema"));
     }
-    return result.toJavaRDD().map(new RowToRecord(outputSchema));
+    //noinspection unchecked
+    return ((JavaRDD<Row>) invokeDataFrameMethod(result, "toJavaRDD")).map(new RowToRecord(outputSchema));
   }
 
   private String generateSourceClass(String className) {
@@ -251,7 +276,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       Type[] parameterTypes = method.getGenericParameterTypes();
 
       // The first parameter should be of type RDD[StructuredRecord] if it takes RDD
-      if (!parameterTypes[0].equals(DataFrame.class)) {
+      if (!parameterTypes[0].equals(DATAFRAME_TYPE)) {
         validateRDDType(parameterTypes[0],
                         "The first parameter of the 'transform' method should have type as 'RDD[StructuredRecord]'");
       }
@@ -264,8 +289,8 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
 
       // The return type of the method must be RDD[StructuredRecord] if it takes RDD
       // Or it must be DataFrame if it takes DataFrame
-      if (parameterTypes[0].equals(DataFrame.class)) {
-        if (!method.getReturnType().equals(DataFrame.class)) {
+      if (parameterTypes[0].equals(DATAFRAME_TYPE)) {
+        if (!method.getReturnType().equals(DATAFRAME_TYPE)) {
           throw new IllegalArgumentException("The return type of the 'transform' method should be 'DataFrame'");
         }
       } else {
@@ -323,6 +348,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Macro
     private final String scalaCode;
 
+    @Description(
+      "Extra dependencies for the Spark program. " +
+        "It is a ',' separated list of URI for the location of dependency jars. " +
+        "A path can be ended with an asterisk '*' as a wildcard, in which all files with extension '.jar' under the " +
+        "parent path will be included."
+    )
+    @Macro
+    @Nullable
+    private final String dependencies;
+
     @Description("The schema of output objects. If no schema is given, it is assumed that the output schema is " +
       "the same as the input schema.")
     @Nullable
@@ -334,9 +369,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Nullable
     private final Boolean deployCompile;
 
-    public Config(String scalaCode, @Nullable String schema, @Nullable Boolean deployCompile) {
+    public Config(String scalaCode, @Nullable String schema, @Nullable String dependencies,
+                  @Nullable Boolean deployCompile) {
       this.scalaCode = scalaCode;
       this.schema = schema;
+      this.dependencies = dependencies;
       this.deployCompile = deployCompile;
     }
 
@@ -347,6 +384,11 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     @Nullable
     public String getSchema() {
       return schema;
+    }
+
+    @Nullable
+    public String getDependencies() {
+      return dependencies;
     }
 
     @Nullable
@@ -387,5 +429,27 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     public StructuredRecord call(Row row) throws Exception {
       return DataFrames.fromRow(row, schema);
     }
+  }
+
+  @Nullable
+  private static Class<?> getDataFrameType() {
+    // For Spark1, it has the DataFrame class
+    // For Spark2, there is no more DataFrame class, and it becomes Dataset<Row>
+    try {
+      return ScalaSparkCompute.class.getClassLoader().loadClass("org.apache.spark.sql.DataFrame");
+    } catch (ClassNotFoundException e) {
+      try {
+        return ScalaSparkCompute.class.getClassLoader().loadClass("org.apache.spark.sql.Dataset");
+      } catch (ClassNotFoundException e1) {
+        LOG.warn("Failed to determine the type of Spark DataFrame. " +
+                   "DataFrame is not supported in the ScalaSparkCompute plugin.");
+        return null;
+      }
+    }
+  }
+
+  private static <T> T invokeDataFrameMethod(Object dataFrame, String methodName) throws Exception {
+    //noinspection unchecked
+    return (T) dataFrame.getClass().getMethod(methodName).invoke(dataFrame);
   }
 }

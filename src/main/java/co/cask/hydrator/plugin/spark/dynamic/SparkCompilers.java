@@ -24,6 +24,8 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import scala.Function0;
 import scala.Option$;
 import scala.collection.JavaConversions;
@@ -44,7 +46,10 @@ import java.lang.reflect.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -56,6 +61,8 @@ import javax.annotation.Nullable;
  * Helper class for Spark compilation.
  */
 public final class SparkCompilers {
+
+  private static final Logger LOG = LoggerFactory.getLogger(SparkCompilers.class);
 
   private static final FilenameFilter JAR_FILE_FILTER = new FilenameFilter() {
     @Override
@@ -213,5 +220,31 @@ public final class SparkCompilers {
 
   private SparkCompilers() {
     // no-op
+  }
+
+  /**
+   * Recursively delete a directory.
+   */
+  public static void deleteDir(@Nullable File dir) {
+    if (dir == null) {
+      return;
+    }
+    try {
+      Files.walkFileTree(dir.toPath(), new SimpleFileVisitor<java.nio.file.Path>() {
+        @Override
+        public FileVisitResult visitFile(java.nio.file.Path file, BasicFileAttributes attrs) throws IOException {
+          Files.deleteIfExists(file);
+          return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult postVisitDirectory(java.nio.file.Path dir, IOException exc) throws IOException {
+          Files.deleteIfExists(dir);
+          return FileVisitResult.CONTINUE;
+        }
+      });
+    } catch (IOException e) {
+      LOG.warn("Failed to cleanup temporary directory {}", dir, e);
+    }
   }
 }

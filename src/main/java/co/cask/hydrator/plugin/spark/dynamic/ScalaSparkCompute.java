@@ -31,9 +31,12 @@ import co.cask.cdap.etl.api.StageConfigurer;
 import co.cask.cdap.etl.api.batch.SparkCompute;
 import co.cask.cdap.etl.api.batch.SparkExecutionPluginContext;
 import org.apache.spark.SparkContext;
+import org.apache.spark.SparkFirehoseListener;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
+import org.apache.spark.scheduler.SparkListenerApplicationEnd;
+import org.apache.spark.scheduler.SparkListenerEvent;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
 import org.apache.spark.sql.types.DataType;
@@ -134,16 +137,41 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   public void initialize(SparkExecutionPluginContext context) throws Exception {
     String className = generateClassName(context.getStageName());
     interpreter = context.createSparkInterpreter();
-    File dir = config.getDependencies() == null ? null : Files.createTempDirectory("sparkprogram").toFile();
-    try {
-      if (config.getDependencies() != null) {
-        SparkCompilers.addDependencies(dir, interpreter, config.getDependencies());
+    File tempDir = null;
+    if (config.getDependencies() != null) {
+      tempDir = Files.createTempDirectory("sparkprogram").toFile();
+      SparkCompilers.addDependencies(tempDir, interpreter, config.getDependencies());
+    }
+    // Release resources on application completion.
+    final File finalTempDir = tempDir;
+    SparkFirehoseListener sparkListener = new SparkFirehoseListener() {
+      @Override
+      public void onEvent(SparkListenerEvent event) {
+        if (event instanceof SparkListenerApplicationEnd) {
+          LOG.info("Releasing resources on Spark application completion.");
+          interpreter.close();
+          if (finalTempDir != null) {
+            SparkCompilers.deleteDir(finalTempDir);
+          }
+        }
       }
+    };
+    // Need to use reflection to find and call the addSparkListener() method, due to incompatible changes
+    // between Spark1 (SparkListener) and Spark2 (SparkListenerInterface).
+    SparkContext sc = context.getSparkContext().sc();
+    for (Method method : sc.getClass().getMethods()) {
+      if (method.getName().equals("addSparkListener")) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        if (paramTypes.length == 1 && paramTypes[0].isAssignableFrom(sparkListener.getClass())) {
+          method.invoke(sc, sparkListener);
+          break;
+        }
+      }
+    }
+
     interpreter.compile(generateSourceClass(className));
     method = getTransformMethod(interpreter.getClassLoader(), className);
-    } finally {
-      SparkCompilers.deleteDir(dir);
-    }
+
     isDataFrame = method.getParameterTypes()[0].equals(DATAFRAME_TYPE);
     takeContext = method.getParameterTypes().length == 2;
 

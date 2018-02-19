@@ -118,7 +118,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
           Method method = getTransformMethod(interpreter.getClassLoader(), className);
 
           // If the method takes DataFrame, make sure it has input schema
-          if (method.getParameterTypes()[0].equals(DATAFRAME_TYPE) && stageConfigurer.getInputSchema() == null) {
+          if (isDataFrame(method.getParameterTypes()[0]) && stageConfigurer.getInputSchema() == null) {
             throw new IllegalArgumentException("Missing input schema for transformation using DataFrame");
           }
 
@@ -172,7 +172,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     interpreter.compile(generateSourceClass(className));
     method = getTransformMethod(interpreter.getClassLoader(), className);
 
-    isDataFrame = method.getParameterTypes()[0].equals(DATAFRAME_TYPE);
+    isDataFrame = isDataFrame(method.getParameterTypes()[0]);
     takeContext = method.getParameterTypes().length == 2;
 
     // Input schema shouldn't be null
@@ -302,9 +302,10 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       }
 
       Type[] parameterTypes = method.getGenericParameterTypes();
+      boolean isDataFrame = isDataFrame(parameterTypes[0]);
 
       // The first parameter should be of type RDD[StructuredRecord] if it takes RDD
-      if (!parameterTypes[0].equals(DATAFRAME_TYPE)) {
+      if (!isDataFrame) {
         validateRDDType(parameterTypes[0],
                         "The first parameter of the 'transform' method should have type as 'RDD[StructuredRecord]'");
       }
@@ -317,8 +318,8 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
 
       // The return type of the method must be RDD[StructuredRecord] if it takes RDD
       // Or it must be DataFrame if it takes DataFrame
-      if (parameterTypes[0].equals(DATAFRAME_TYPE)) {
-        if (!method.getReturnType().equals(DATAFRAME_TYPE)) {
+      if (isDataFrame) {
+        if (!isDataFrame(method.getGenericReturnType())) {
           throw new IllegalArgumentException("The return type of the 'transform' method should be 'DataFrame'");
         }
       } else {
@@ -354,6 +355,22 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       }
     }
     return nameBuilder.toString();
+  }
+
+  /**
+   * Returns whether the given {@link Type} is a DataFrame type.
+   */
+  private boolean isDataFrame(Type type) {
+    if (DATAFRAME_TYPE == null) {
+      return false;
+    }
+    if (type instanceof Class) {
+      return ((Class<?>) type).isAssignableFrom(DATAFRAME_TYPE);
+    }
+    if (type instanceof ParameterizedType) {
+      return isDataFrame(((ParameterizedType) type).getRawType());
+    }
+    return false;
   }
 
   /**

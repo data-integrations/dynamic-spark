@@ -48,6 +48,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -207,7 +208,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     StructType rowType = DataFrames.toDataType(inputSchema);
     JavaRDD<Row> rowRDD = javaRDD.map(new RecordToRow(rowType));
 
-    Object dataFrame = sqlContext.createDataFrame(rowRDD, rowType);
+    Object dataFrame = createDataFrame(sqlContext, rowRDD, rowType);
     Object result = takeContext ? method.invoke(null, dataFrame, context) : method.invoke(null, dataFrame);
 
     // Convert the DataFrame back to RDD<StructureRecord>
@@ -371,6 +372,20 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       return isDataFrame(((ParameterizedType) type).getRawType());
     }
     return false;
+  }
+
+  private Object createDataFrame(SQLContext sqlContext, JavaRDD<Row> rdd, StructType type) {
+    try {
+      return sqlContext.getClass()
+        .getMethod("createDataFrame", JavaRDD.class, StructType.class)
+        .invoke(sqlContext, rdd, type);
+    } catch (NoSuchMethodException e) {
+      throw new RuntimeException("Unable to find SQLContext.createDataFrame(JavaRDD, StructType) method", e);
+    } catch (IllegalAccessException e) {
+      throw new RuntimeException("No permission to invoke SQLContext.createDataFrame(JavaRDD, StructType) method", e);
+    } catch (InvocationTargetException e) {
+      throw new RuntimeException("Failed to invoke SQLContext.createDataFrame(JavaRDD, StructType) method", e);
+    }
   }
 
   /**

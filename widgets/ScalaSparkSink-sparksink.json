@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "spec-version": "1.4"
+  },
+  "display-name": "Spark",
+  "configuration-groups": [
+    {
+      "label": "Spark Scala",
+      "properties": [
+        {
+          "widget-type": "scala-editor",
+          "label": "Scala",
+          "name": "scalaCode",
+          "widget-attributes": {
+            "default": "/**\n * Performs operations on the provided input Apache Spark RDD or DataFrame.\n *\n * The input DataFrame has the same schema as the input schema to this stage.\n * To emit logs, use: \n *     import org.slf4j.LoggerFactory\n *     val logger = LoggerFactory.getLogger('mylogger')\n *     logger.info('Logging')\n *\n *\n * @param input the input DataFrame which has the same schema as the input schema to this stage.\n * @param context a SparkExecutionPluginContext object that can be used to emit zero or more records (using the emitter.emit() method) or errors (using the emitter.emitError() method) \n * @param context an object that provides access to:\n *      1. CDAP Datasets and Streams - context.fromDataset('counts'); or context.fromStream('input');\n *      2. Original Spark Context - context.getSparkContext();\n *      3. Runtime Arguments - context.getArguments.get('priceThreshold')\n */\ndef sink(df: DataFrame, context: SparkExecutionPluginContext) : Unit = {\n  df\n}"
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Dependencies",
+          "name": "dependencies"
+        },
+        {
+          "widget-type": "select",
+          "label": "Compile at Deployment Time",
+          "name": "deployCompile",
+          "widget-attributes": {
+            "values" : ["true", "false"],
+            "default": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

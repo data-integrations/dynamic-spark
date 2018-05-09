@@ -28,6 +28,7 @@ import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
 import co.cask.cdap.datapipeline.DataPipelineApp;
 import co.cask.cdap.datapipeline.SmartWorkflow;
 import co.cask.cdap.etl.api.batch.SparkCompute;
+import co.cask.cdap.etl.api.batch.SparkSink;
 import co.cask.cdap.etl.mock.batch.MockSink;
 import co.cask.cdap.etl.mock.batch.MockSource;
 import co.cask.cdap.etl.mock.test.HydratorTestBase;
@@ -55,10 +56,13 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,7 +92,7 @@ public class ScalaSparkTest extends HydratorTestBase {
                         new ArtifactVersion(DATAPIPELINE_ARTIFACT_ID.getVersion()), true)
     );
     addPluginArtifact(NamespaceId.DEFAULT.artifact("dynamic-spark", "1.0.0"), parents,
-                      ScalaSparkCompute.class, ScalaSparkProgram.class);
+                      ScalaSparkCompute.class, ScalaSparkProgram.class, ScalaSparkSink.class);
   }
 
   @Test
@@ -266,5 +270,78 @@ public class ScalaSparkTest extends HydratorTestBase {
       Assert.assertEquals(1L, wordCounts.get(Integer.toString(i)).get("count"));
     }
     Assert.assertEquals(10L, wordCounts.get("Line").get("count"));
+  }
+
+  @Test
+  public void testScalaSparkSink() throws Exception {
+    Schema inputSchema = Schema.recordOf(
+      "input",
+      Schema.Field.of("body", Schema.nullableOf(Schema.of(Schema.Type.STRING)))
+    );
+
+    File testFolder = TEMP_FOLDER.newFolder("scalaSinkOutput");
+    File outputFolder = new File(testFolder, "output");
+    StringWriter codeWriter = new StringWriter();
+    try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
+      printer.println("def sink(df: DataFrame) : Unit = {");
+      printer.println("  val splitted = df.explode(\"body\", \"word\") { ");
+      printer.println("    line: String => line.split(\"\\\\s+\")");
+      printer.println("  }");
+      printer.println("  splitted.registerTempTable(\"splitted\")");
+      printer.println("  val query = \"SELECT CONCAT(word, ' ', count(*)) FROM splitted GROUP BY word\"");
+      printer.println("  val out = splitted.sqlContext.sql(query)");
+      printer.println("  out.write.format(\"text\").save(\"" + outputFolder.getAbsolutePath() + "\")");
+      printer.println("}");
+    }
+
+    // Pipeline configuration
+    ETLBatchConfig etlConfig = ETLBatchConfig.builder("* * * * *")
+      .addStage(new ETLStage("source", MockSource.getPlugin("sinkInput", inputSchema)))
+      .addStage(new ETLStage("sink", new ETLPlugin("ScalaSparkSink", SparkSink.PLUGIN_TYPE,
+                                                   ImmutableMap.of("scalaCode", codeWriter.toString()))))
+      .addConnection("source", "sink")
+      .build();
+
+    // Deploy the pipeline
+    ArtifactSummary artifactSummary = new ArtifactSummary(DATAPIPELINE_ARTIFACT_ID.getArtifact(),
+                                                          DATAPIPELINE_ARTIFACT_ID.getVersion());
+    AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
+    ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkSinkApp");
+    ApplicationManager appManager = deployApplication(appId.toId(), appRequest);
+
+    // write records to source
+    DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset("sinkInput"));
+    List<StructuredRecord> inputRecords = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      inputRecords.add(StructuredRecord.builder(inputSchema).set("body", "Line " + i).build());
+    }
+    MockSource.writeInput(inputManager, inputRecords);
+
+    // Run the pipeline
+    WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
+    workflowManager.start();
+    workflowManager.waitForRun(ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
+
+    // Verify result written to sink.
+    // It has two fields, word and count.
+    Map<String, Long> wordCounts = new HashMap<>();
+    for (File outputFile : outputFolder.listFiles()) {
+      String fileName = outputFile.getName();
+      if (fileName.startsWith(".") || "_SUCCESS".equals(fileName)) {
+        continue;
+      }
+      try (BufferedReader reader = new BufferedReader(new FileReader(outputFile))) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+          String[] fields = line.split(" ");
+          wordCounts.put(fields[0], Long.valueOf(fields[1]));
+        }
+      }
+    }
+    Assert.assertEquals(11, wordCounts.size());
+    for (int i = 0; i < 10; i++) {
+      Assert.assertEquals(1L, (long) wordCounts.get(String.valueOf(Integer.toString(i))));
+    }
+    Assert.assertEquals(10L, (long) wordCounts.get("Line"));
   }
 }

@@ -298,7 +298,7 @@ public class ScalaSparkCodeExecutor {
 
       // The return type of the method must be Unit
       if (isVoid) {
-        if (!"void".equals(method.getReturnType().getName())) {
+        if (!void.class.equals(method.getReturnType())) {
           throw new IllegalArgumentException(String.format("The return type of the '%s' method should be 'Unit'",
                                                            methodName));
         }

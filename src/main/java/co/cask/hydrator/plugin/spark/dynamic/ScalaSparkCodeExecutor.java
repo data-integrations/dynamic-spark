@@ -165,6 +165,10 @@ public class ScalaSparkCodeExecutor {
     }
   }
 
+  public boolean isDataFrame() {
+    return isDataFrame;
+  }
+
   /**
    * Execute interpreted code on the given RDD.
    */
@@ -173,11 +177,9 @@ public class ScalaSparkCodeExecutor {
     // RDD case
     if (!isDataFrame) {
       if (takeContext) {
-        //noinspection unchecked
-        return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd(), context)).toJavaRDD();
+        return method.invoke(null, javaRDD.rdd(), context);
       } else {
-        //noinspection unchecked
-        return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd())).toJavaRDD();
+        return method.invoke(null, javaRDD.rdd());
       }
     }
 

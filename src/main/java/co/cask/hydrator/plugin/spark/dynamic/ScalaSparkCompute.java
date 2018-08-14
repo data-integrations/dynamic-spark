@@ -30,6 +30,7 @@ import co.cask.cdap.etl.api.batch.SparkCompute;
 import co.cask.cdap.etl.api.batch.SparkExecutionPluginContext;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.Function;
+import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataType;
 
@@ -48,6 +49,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   // A strong reference is needed to keep the compiled classes around
   @SuppressWarnings("FieldCanBeLocal")
   private transient ScalaSparkCodeExecutor codeExecutor;
+  private transient boolean isRDD;
 
   public ScalaSparkCompute(Config config) {
     this.config = config;
@@ -77,12 +79,18 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   public void initialize(SparkExecutionPluginContext context) throws Exception {
     codeExecutor = new ScalaSparkCodeExecutor(config.getScalaCode(), config.getDependencies(), "transform", false);
     codeExecutor.initialize(context);
+    isRDD = !codeExecutor.isDataFrame();
   }
 
   @Override
   public JavaRDD<StructuredRecord> transform(SparkExecutionPluginContext context,
                                              JavaRDD<StructuredRecord> javaRDD) throws Exception {
     Object result = codeExecutor.execute(context, javaRDD);
+
+    if (isRDD) {
+      //noinspection unchecked
+      return ((RDD<StructuredRecord>) result).toJavaRDD();
+    }
 
     // Convert the DataFrame back to RDD<StructureRecord>
     Schema outputSchema = context.getOutputSchema();
@@ -176,7 +184,7 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     }
 
     @Override
-    public StructuredRecord call(Row row) throws Exception {
+    public StructuredRecord call(Row row) {
       return DataFrames.fromRow(row, schema);
     }
   }

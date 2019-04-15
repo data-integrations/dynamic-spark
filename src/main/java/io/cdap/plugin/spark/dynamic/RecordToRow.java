@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018 Cask Data, Inc.
+ * Copyright © 2018-2019 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -14,10 +14,10 @@
  * the License.
  */
 
-package co.cask.hydrator.plugin.spark.dynamic;
+package io.cdap.plugin.spark.dynamic;
 
-import co.cask.cdap.api.data.format.StructuredRecord;
-import co.cask.cdap.api.spark.sql.DataFrames;
+import io.cdap.cdap.api.data.format.StructuredRecord;
+import io.cdap.cdap.api.spark.sql.DataFrames;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.StructType;

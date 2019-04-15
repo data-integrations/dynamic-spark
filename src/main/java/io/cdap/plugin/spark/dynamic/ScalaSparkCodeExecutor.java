@@ -1,5 +1,5 @@
 /*
- * Copyright © 2018 Cask Data, Inc.
+ * Copyright © 2018-2019 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -14,14 +14,14 @@
  * the License.
  */
 
-package co.cask.hydrator.plugin.spark.dynamic;
+package io.cdap.plugin.spark.dynamic;
 
-import co.cask.cdap.api.data.format.StructuredRecord;
-import co.cask.cdap.api.data.schema.Schema;
-import co.cask.cdap.api.spark.dynamic.CompilationFailureException;
-import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
-import co.cask.cdap.api.spark.sql.DataFrames;
-import co.cask.cdap.etl.api.batch.SparkExecutionPluginContext;
+import io.cdap.cdap.api.data.format.StructuredRecord;
+import io.cdap.cdap.api.data.schema.Schema;
+import io.cdap.cdap.api.spark.dynamic.CompilationFailureException;
+import io.cdap.cdap.api.spark.dynamic.SparkInterpreter;
+import io.cdap.cdap.api.spark.sql.DataFrames;
+import io.cdap.cdap.etl.api.batch.SparkExecutionPluginContext;
 import org.apache.spark.SparkContext;
 import org.apache.spark.SparkFirehoseListener;
 import org.apache.spark.api.java.JavaRDD;
@@ -51,7 +51,7 @@ import javax.annotation.Nullable;
 public class ScalaSparkCodeExecutor {
 
   private static final Logger LOG = LoggerFactory.getLogger(ScalaSparkCodeExecutor.class);
-  private static final String CLASS_NAME_PREFIX = "co.cask.hydrator.plugin.spark.dynamic.generated.UserScalaSpark$";
+  private static final String CLASS_NAME_PREFIX = "io.cdap.plugin.spark.dynamic.generated.UserScalaSpark$";
   private static final Class<?> DATAFRAME_TYPE = getDataFrameType();
   private static final Class<?>[][] ACCEPTABLE_PARAMETER_TYPES = new Class<?>[][] {
     { RDD.class, SparkExecutionPluginContext.class },
@@ -203,9 +203,9 @@ public class ScalaSparkCodeExecutor {
     try (PrintWriter sourceWriter = new PrintWriter(writer, false)) {
       sourceWriter.println("package " + className.substring(0, className.lastIndexOf('.')));
       // Includes some commonly used imports.
-      sourceWriter.println("import co.cask.cdap.api.data.format._");
-      sourceWriter.println("import co.cask.cdap.api.data.schema._");
-      sourceWriter.println("import co.cask.cdap.etl.api.batch._");
+      sourceWriter.println("import io.cdap.cdap.api.data.format._");
+      sourceWriter.println("import io.cdap.cdap.api.data.schema._");
+      sourceWriter.println("import io.cdap.cdap.etl.api.batch._");
       sourceWriter.println("import org.apache.spark._");
       sourceWriter.println("import org.apache.spark.api.java._");
       sourceWriter.println("import org.apache.spark.rdd._");

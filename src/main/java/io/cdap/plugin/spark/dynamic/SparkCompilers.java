@@ -1,5 +1,5 @@
 /*
- * Copyright © 2017 Cask Data, Inc.
+ * Copyright © 2017-2019 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -14,11 +14,11 @@
  * the License.
  */
 
-package co.cask.hydrator.plugin.spark.dynamic;
+package io.cdap.plugin.spark.dynamic;
 
 
-import co.cask.cdap.api.spark.dynamic.SparkCompiler;
-import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
+import io.cdap.cdap.api.spark.dynamic.SparkCompiler;
+import io.cdap.cdap.api.spark.dynamic.SparkInterpreter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
@@ -79,7 +79,7 @@ public final class SparkCompilers {
     try {
       ClassLoader classLoader = SparkInterpreter.class.getClassLoader();
       Settings settings = (Settings) classLoader
-        .loadClass("co.cask.cdap.app.runtime.spark.dynamic.AbstractSparkCompiler")
+        .loadClass("io.cdap.cdap.app.runtime.spark.dynamic.AbstractSparkCompiler")
         .getDeclaredMethod("setClassPath", Settings.class)
         .invoke(null, new Settings());
 
@@ -100,7 +100,7 @@ public final class SparkCompilers {
       // Done workaround for CDAP-12743
 
       Class<?> interpreterClass = classLoader
-        .loadClass("co.cask.cdap.app.runtime.spark.dynamic.DefaultSparkInterpreter");
+        .loadClass("io.cdap.cdap.app.runtime.spark.dynamic.DefaultSparkInterpreter");
 
       // There should be a constructor
       Constructor<?>[] constructors = interpreterClass.getDeclaredConstructors();
@@ -117,7 +117,7 @@ public final class SparkCompilers {
           return null;
         }
       };
-      Class<?> urlAdderClass = classLoader.loadClass("co.cask.cdap.app.runtime.spark.dynamic.URLAdder");
+      Class<?> urlAdderClass = classLoader.loadClass("io.cdap.cdap.app.runtime.spark.dynamic.URLAdder");
       Object urlAdder = Proxy.newProxyInstance(classLoader, new Class<?>[]{urlAdderClass}, handler);
       Function0<BoxedUnit> onCloseFunc = new AbstractFunction0<BoxedUnit>() {
         @Override

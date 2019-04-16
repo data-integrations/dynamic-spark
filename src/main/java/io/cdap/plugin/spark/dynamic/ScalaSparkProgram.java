@@ -1,5 +1,5 @@
 /*
- * Copyright © 2017 Cask Data, Inc.
+ * Copyright © 2017-2019 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -14,20 +14,20 @@
  * the License.
  */
 
-package co.cask.hydrator.plugin.spark.dynamic;
+package io.cdap.plugin.spark.dynamic;
 
-import co.cask.cdap.api.annotation.Description;
-import co.cask.cdap.api.annotation.Macro;
-import co.cask.cdap.api.annotation.Name;
-import co.cask.cdap.api.annotation.Plugin;
-import co.cask.cdap.api.common.RuntimeArguments;
-import co.cask.cdap.api.plugin.PluginConfig;
-import co.cask.cdap.api.spark.JavaSparkExecutionContext;
-import co.cask.cdap.api.spark.JavaSparkMain;
-import co.cask.cdap.api.spark.SparkExecutionContext;
-import co.cask.cdap.api.spark.SparkMain;
-import co.cask.cdap.api.spark.dynamic.CompilationFailureException;
-import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
+import io.cdap.cdap.api.annotation.Description;
+import io.cdap.cdap.api.annotation.Macro;
+import io.cdap.cdap.api.annotation.Name;
+import io.cdap.cdap.api.annotation.Plugin;
+import io.cdap.cdap.api.common.RuntimeArguments;
+import io.cdap.cdap.api.plugin.PluginConfig;
+import io.cdap.cdap.api.spark.JavaSparkExecutionContext;
+import io.cdap.cdap.api.spark.JavaSparkMain;
+import io.cdap.cdap.api.spark.SparkExecutionContext;
+import io.cdap.cdap.api.spark.SparkMain;
+import io.cdap.cdap.api.spark.dynamic.CompilationFailureException;
+import io.cdap.cdap.api.spark.dynamic.SparkInterpreter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

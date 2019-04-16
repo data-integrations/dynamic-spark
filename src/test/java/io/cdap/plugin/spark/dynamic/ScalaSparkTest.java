@@ -1,5 +1,5 @@
 /*
- * Copyright © 2017 Cask Data, Inc.
+ * Copyright © 2017-2019 Cask Data, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not
  * use this file except in compliance with the License. You may obtain a copy of
@@ -14,42 +14,47 @@
  * the License.
  */
 
-package co.cask.hydrator.plugin.spark.dynamic;
+package io.cdap.plugin.spark.dynamic;
 
-import co.cask.cdap.api.artifact.ArtifactRange;
-import co.cask.cdap.api.artifact.ArtifactSummary;
-import co.cask.cdap.api.artifact.ArtifactVersion;
-import co.cask.cdap.api.common.Bytes;
-import co.cask.cdap.api.data.format.StructuredRecord;
-import co.cask.cdap.api.data.schema.Schema;
-import co.cask.cdap.api.dataset.lib.KeyValueTable;
-import co.cask.cdap.api.dataset.table.Table;
-import co.cask.cdap.api.spark.dynamic.SparkInterpreter;
-import co.cask.cdap.datapipeline.DataPipelineApp;
-import co.cask.cdap.datapipeline.SmartWorkflow;
-import co.cask.cdap.etl.api.batch.SparkCompute;
-import co.cask.cdap.etl.api.batch.SparkSink;
-import co.cask.cdap.etl.mock.batch.MockSink;
-import co.cask.cdap.etl.mock.batch.MockSource;
-import co.cask.cdap.etl.mock.test.HydratorTestBase;
-import co.cask.cdap.etl.proto.v2.ETLBatchConfig;
-import co.cask.cdap.etl.proto.v2.ETLPlugin;
-import co.cask.cdap.etl.proto.v2.ETLStage;
-import co.cask.cdap.proto.ProgramRunStatus;
-import co.cask.cdap.proto.artifact.AppRequest;
-import co.cask.cdap.proto.id.ApplicationId;
-import co.cask.cdap.proto.id.ArtifactId;
-import co.cask.cdap.proto.id.NamespaceId;
-import co.cask.cdap.test.ApplicationManager;
-import co.cask.cdap.test.DataSetManager;
-import co.cask.cdap.test.StreamManager;
-import co.cask.cdap.test.TestConfiguration;
-import co.cask.cdap.test.WorkflowManager;
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import io.cdap.cdap.api.artifact.ArtifactRange;
+import io.cdap.cdap.api.artifact.ArtifactSummary;
+import io.cdap.cdap.api.artifact.ArtifactVersion;
+import io.cdap.cdap.api.common.Bytes;
+import io.cdap.cdap.api.common.RuntimeArguments;
+import io.cdap.cdap.api.common.Scope;
+import io.cdap.cdap.api.data.format.StructuredRecord;
+import io.cdap.cdap.api.data.schema.Schema;
+import io.cdap.cdap.api.dataset.lib.FileSet;
+import io.cdap.cdap.api.dataset.lib.FileSetArguments;
+import io.cdap.cdap.api.dataset.lib.FileSetProperties;
+import io.cdap.cdap.api.dataset.lib.KeyValueTable;
+import io.cdap.cdap.api.dataset.table.Table;
+import io.cdap.cdap.api.spark.dynamic.SparkInterpreter;
+import io.cdap.cdap.datapipeline.DataPipelineApp;
+import io.cdap.cdap.datapipeline.SmartWorkflow;
+import io.cdap.cdap.etl.api.batch.SparkCompute;
+import io.cdap.cdap.etl.api.batch.SparkSink;
+import io.cdap.cdap.etl.mock.batch.MockSink;
+import io.cdap.cdap.etl.mock.batch.MockSource;
+import io.cdap.cdap.etl.mock.test.HydratorTestBase;
+import io.cdap.cdap.etl.proto.v2.ETLBatchConfig;
+import io.cdap.cdap.etl.proto.v2.ETLPlugin;
+import io.cdap.cdap.etl.proto.v2.ETLStage;
+import io.cdap.cdap.proto.ProgramRunStatus;
+import io.cdap.cdap.proto.artifact.AppRequest;
+import io.cdap.cdap.proto.id.ApplicationId;
+import io.cdap.cdap.proto.id.ArtifactId;
+import io.cdap.cdap.proto.id.NamespaceId;
+import io.cdap.cdap.test.ApplicationManager;
+import io.cdap.cdap.test.DataSetManager;
+import io.cdap.cdap.test.TestConfiguration;
+import io.cdap.cdap.test.WorkflowManager;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
@@ -59,6 +64,7 @@ import org.junit.rules.TemporaryFolder;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -99,10 +105,11 @@ public class ScalaSparkTest extends HydratorTestBase {
   public void testScalaProgram() throws Exception {
     StringWriter codeWriter = new StringWriter();
     try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
-      printer.println("import co.cask.cdap.api.common._");
-      printer.println("import co.cask.cdap.api.dataset._");
-      printer.println("import co.cask.cdap.api.dataset.lib._");
-      printer.println("import co.cask.cdap.api.spark._");
+      printer.println("import io.cdap.cdap.api.common._");
+      printer.println("import io.cdap.cdap.api.dataset._");
+      printer.println("import io.cdap.cdap.api.dataset.lib._");
+      printer.println("import io.cdap.cdap.api.spark._");
+      printer.println("import org.apache.hadoop.io._");
       printer.println("import org.apache.spark._");
       printer.println("class SparkProgram extends SparkMain {");
       printer.println("  override def run(implicit sec:SparkExecutionContext): Unit = {");
@@ -110,7 +117,9 @@ public class ScalaSparkTest extends HydratorTestBase {
       printer.println("       .createDataset(\"kvTable\", classOf[KeyValueTable].getName(), DatasetProperties.EMPTY);");
       printer.println("    val sc = new SparkContext");
       printer.println("    sc");
-      printer.println("      .fromStream[String](\"text\")");
+      printer.println("      .fromDataset[LongWritable, Text](\"text\")");
+      printer.println("      .values");
+      printer.println("      .map(_.toString)");
       printer.println("      .flatMap(_.split(\"\\\\s+\"))");
       printer.println("      .map((_, 1))");
       printer.println("      .reduceByKey(_ + _)");
@@ -133,18 +142,25 @@ public class ScalaSparkTest extends HydratorTestBase {
                                                           DATAPIPELINE_ARTIFACT_ID.getVersion());
     AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
     ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkProgramApp");
-    ApplicationManager appManager = deployApplication(appId.toId(), appRequest);
+    ApplicationManager appManager = deployApplication(appId, appRequest);
 
-    // Create a stream and write to it
-    StreamManager streamManager = getStreamManager("text");
-    streamManager.createStream();
-    for (int i = 0; i < 10; i++) {
-      streamManager.send("Line " + i);
+    // Create a fileset and write to it
+    addDatasetInstance("fileSet", "text", FileSetProperties.builder().setInputFormat(TextInputFormat.class).build());
+    DataSetManager<FileSet> dsManager = getDataset("text");
+    FileSet fileset = dsManager.get();
+    try (OutputStream out = fileset.getLocation("text.txt").getOutputStream()) {
+      for (int i = 0; i < 10; i++) {
+        out.write(Bytes.toBytes("Line " + i + "\n"));
+      }
     }
 
     // Run the pipeline
+    Map<String, String> inputArgs = new HashMap<>();
+    FileSetArguments.setInputPath(inputArgs, "text.txt");
+    Map<String, String> runtimeArgs = new HashMap<>(RuntimeArguments.addScope(Scope.DATASET, "text", inputArgs));
+
     WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
-    workflowManager.start();
+    workflowManager.start(runtimeArgs);
     workflowManager.waitForRun(ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
 
     // Validate the result
@@ -166,7 +182,7 @@ public class ScalaSparkTest extends HydratorTestBase {
     // Run a Spark program that reference to SparkConstants.COLLECTION, which comes from dependency jar
     StringWriter codeWriter = new StringWriter();
     try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
-      printer.println("import co.cask.cdap.api.spark._");
+      printer.println("import io.cdap.cdap.api.spark._");
       printer.println("import org.apache.spark._");
       printer.println("class SparkProgram extends SparkMain {");
       printer.println("  override def run(implicit sec:SparkExecutionContext): Unit = {");
@@ -190,7 +206,7 @@ public class ScalaSparkTest extends HydratorTestBase {
                                                           DATAPIPELINE_ARTIFACT_ID.getVersion());
     AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
     ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkProgramDependencyApp");
-    ApplicationManager appManager = deployApplication(appId.toId(), appRequest);
+    ApplicationManager appManager = deployApplication(appId, appRequest);
 
     // Run the pipeline. It should succeed
     WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
@@ -239,7 +255,7 @@ public class ScalaSparkTest extends HydratorTestBase {
                                                           DATAPIPELINE_ARTIFACT_ID.getVersion());
     AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
     ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkComputeApp");
-    ApplicationManager appManager = deployApplication(appId.toId(), appRequest);
+    ApplicationManager appManager = deployApplication(appId, appRequest);
 
     // write records to source
     DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset("singleInput"));
@@ -267,9 +283,9 @@ public class ScalaSparkTest extends HydratorTestBase {
 
     Assert.assertEquals(11, wordCounts.size());
     for (int i = 0; i < 10; i++) {
-      Assert.assertEquals(1L, wordCounts.get(Integer.toString(i)).get("count"));
+      Assert.assertEquals(Long.valueOf(1L), wordCounts.get(Integer.toString(i)).get("count"));
     }
-    Assert.assertEquals(10L, wordCounts.get("Line").get("count"));
+    Assert.assertEquals(Long.valueOf(10L), wordCounts.get("Line").get("count"));
   }
 
   @Test
@@ -307,7 +323,7 @@ public class ScalaSparkTest extends HydratorTestBase {
                                                           DATAPIPELINE_ARTIFACT_ID.getVersion());
     AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
     ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkSinkApp");
-    ApplicationManager appManager = deployApplication(appId.toId(), appRequest);
+    ApplicationManager appManager = deployApplication(appId, appRequest);
 
     // write records to source
     DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset("sinkInput"));

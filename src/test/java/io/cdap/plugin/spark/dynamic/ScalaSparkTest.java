@@ -215,6 +215,60 @@ public class ScalaSparkTest extends HydratorTestBase {
   }
 
   @Test
+  public void testScalaSparkProgramClosure() throws Exception {
+    StringWriter codeWriter = new StringWriter();
+    try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
+      printer.println("import io.cdap.cdap.api.spark._");
+      printer.println("import org.apache.spark._");
+      printer.println("import org.apache.spark.rdd.RDD");
+      printer.println("import org.slf4j._");
+
+      printer.println("class SparkProgram extends SparkMain {");
+      printer.println("  import SparkProgram._");
+
+      printer.println("  override def run(implicit sec: SparkExecutionContext): Unit = {");
+      printer.println("    LOG.info(\"Spark Program Started\")");
+
+      printer.println("    val sc = new SparkContext");
+      printer.println("    val points = sc.parallelize(Seq((\"a\", Array(1, 2)), (\"a\", Array(3, 4))))");
+
+      printer.println("    val sq = points.mapValues(t => Array(t.apply(0) * t.apply(0), t.apply(1) * t.apply(1)))");
+      printer.println("    LOG.info(\"squared = {}\", sq.collect)");
+
+      printer.println("    val squaredNested = points.mapValues(t => t.map(x => x * x))");
+      printer.println("    LOG.info(\"squaredNested = {}\", squaredNested.collect)");
+
+      printer.println("    LOG.info(\"Spark Program Completed\")");
+      printer.println("  }");
+      printer.println("}");
+
+      printer.println("object SparkProgram {");
+      printer.println("  val LOG = LoggerFactory.getLogger(getClass())");
+      printer.println("}");
+    }
+
+    // Pipeline configuration
+    ETLBatchConfig etlConfig = ETLBatchConfig.builder()
+      .addStage(new ETLStage("action", new ETLPlugin("ScalaSparkProgram", "sparkprogram", ImmutableMap.of(
+        "scalaCode", codeWriter.toString(),
+        "mainClass", "SparkProgram"
+      ))))
+      .build();
+
+    // Deploy the pipeline
+    ArtifactSummary artifactSummary = new ArtifactSummary(DATAPIPELINE_ARTIFACT_ID.getArtifact(),
+                                                          DATAPIPELINE_ARTIFACT_ID.getVersion());
+    AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
+    ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkProgramApp");
+    ApplicationManager appManager = deployApplication(appId, appRequest);
+
+    // Run the pipeline
+    WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
+    workflowManager.start();
+    workflowManager.waitForRun(ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
+  }
+
+  @Test
   public void testScalaSparkCompute() throws Exception {
     Schema inputSchema = Schema.recordOf(
       "input",

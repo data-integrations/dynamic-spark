@@ -28,8 +28,6 @@ import io.cdap.cdap.api.spark.SparkExecutionContext;
 import io.cdap.cdap.api.spark.SparkMain;
 import io.cdap.cdap.api.spark.dynamic.CompilationFailureException;
 import io.cdap.cdap.api.spark.dynamic.SparkInterpreter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -46,8 +44,6 @@ import javax.annotation.Nullable;
 @Name("ScalaSparkProgram")
 @Description("Executes user-provided Spark program")
 public class ScalaSparkProgram implements JavaSparkMain {
-
-  private static final Logger LOG = LoggerFactory.getLogger(ScalaSparkProgram.class);
 
   private final Config config;
 
@@ -144,15 +140,18 @@ public class ScalaSparkProgram implements JavaSparkMain {
         arg = sec == null ? null : RuntimeArguments.toPosixArray(sec.getRuntimeArguments());
       }
 
-      return new Callable<Void>() {
-        @Override
-        public Void call() throws Exception {
+      return () -> {
+        ClassLoader oldCl = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(classLoader);
+        try {
           Object instance = null;
           if (!Modifier.isStatic(method.getModifiers())) {
             instance = cls.newInstance();
           }
           method.invoke(instance, arg);
           return null;
+        } finally {
+          Thread.currentThread().setContextClassLoader(oldCl);
         }
       };
 

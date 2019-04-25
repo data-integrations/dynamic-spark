@@ -170,31 +170,37 @@ public class ScalaSparkCodeExecutor {
    */
   public Object execute(SparkExecutionPluginContext context,
                         JavaRDD<StructuredRecord> javaRDD) throws InvocationTargetException, IllegalAccessException {
-    // RDD case
-    if (!isDataFrame) {
-      if (takeContext) {
-        //noinspection unchecked
-        return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd(), context)).toJavaRDD();
-      } else {
-        //noinspection unchecked
-        return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd())).toJavaRDD();
+    ClassLoader oldCL = Thread.currentThread().getContextClassLoader();
+    Thread.currentThread().setContextClassLoader(interpreter.getClassLoader());
+    try {
+      // RDD case
+      if (!isDataFrame) {
+        if (takeContext) {
+          //noinspection unchecked
+          return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd(), context)).toJavaRDD();
+        } else {
+          //noinspection unchecked
+          return ((RDD<StructuredRecord>) method.invoke(null, javaRDD.rdd())).toJavaRDD();
+        }
       }
+
+      // DataFrame case
+      Schema inputSchema = context.getInputSchema();
+      if (inputSchema == null) {
+        // Should already been checked in initialize. This is to safeguard in case the call sequence changed in future.
+        throw new IllegalArgumentException("Input schema must be provided for using DataFrame in Spark Compute");
+      }
+
+      SQLContext sqlContext = getSQLContext(context.getSparkContext().sc());
+
+      StructType rowType = DataFrames.toDataType(inputSchema);
+      JavaRDD<Row> rowRDD = javaRDD.map(new RecordToRow(rowType));
+
+      Object dataFrame = createDataFrame(sqlContext, rowRDD, rowType);
+      return takeContext ? method.invoke(null, dataFrame, context) : method.invoke(null, dataFrame);
+    } finally {
+      Thread.currentThread().setContextClassLoader(oldCL);
     }
-
-    // DataFrame case
-    Schema inputSchema = context.getInputSchema();
-    if (inputSchema == null) {
-      // Should already been checked in initialize. This is to safeguard in case the call sequence changed in future.
-      throw new IllegalArgumentException("Input schema must be provided for using DataFrame in Spark Compute");
-    }
-
-    SQLContext sqlContext = getSQLContext(context.getSparkContext().sc());
-
-    StructType rowType = DataFrames.toDataType(inputSchema);
-    JavaRDD<Row> rowRDD = javaRDD.map(new RecordToRow(rowType));
-
-    Object dataFrame = createDataFrame(sqlContext, rowRDD, rowType);
-    return takeContext ? method.invoke(null, dataFrame, context) : method.invoke(null, dataFrame);
   }
 
   private String generateSourceClass(String className) {

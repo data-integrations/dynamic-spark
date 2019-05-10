@@ -161,8 +161,7 @@ public class ScalaSparkTest extends HydratorTestBase {
     Map<String, String> runtimeArgs = new HashMap<>(RuntimeArguments.addScope(Scope.DATASET, "text", inputArgs));
 
     WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
-    workflowManager.start(runtimeArgs);
-    workflowManager.waitForRun(ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
+    workflowManager.startAndWaitForRun(runtimeArgs, ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
 
     // Validate the result
     KeyValueTable kvTable = this.<KeyValueTable>getDataset("kvTable").get();

@@ -72,6 +72,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -160,8 +161,7 @@ public class ScalaSparkTest extends HydratorTestBase {
     Map<String, String> runtimeArgs = new HashMap<>(RuntimeArguments.addScope(Scope.DATASET, "text", inputArgs));
 
     WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
-    workflowManager.start(runtimeArgs);
-    workflowManager.waitForRun(ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
+    workflowManager.startAndWaitForRun(runtimeArgs, ProgramRunStatus.COMPLETED, 5, TimeUnit.MINUTES);
 
     // Validate the result
     KeyValueTable kvTable = this.<KeyValueTable>getDataset("kvTable").get();
@@ -269,18 +269,7 @@ public class ScalaSparkTest extends HydratorTestBase {
   }
 
   @Test
-  public void testScalaSparkCompute() throws Exception {
-    Schema inputSchema = Schema.recordOf(
-      "input",
-      Schema.Field.of("body", Schema.nullableOf(Schema.of(Schema.Type.STRING)))
-    );
-
-    Schema computeSchema = Schema.recordOf(
-      "output",
-      Schema.Field.of("word", Schema.nullableOf(Schema.of(Schema.Type.STRING))),
-      Schema.Field.of("count", Schema.nullableOf(Schema.of(Schema.Type.LONG)))
-    );
-
+  public void testScalaSparkComputeDataFrame() throws Exception {
     StringWriter codeWriter = new StringWriter();
     try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
       printer.println("def transform(df: DataFrame) : DataFrame = {");
@@ -292,14 +281,50 @@ public class ScalaSparkTest extends HydratorTestBase {
       printer.println("}");
     }
 
+    testWordCountCompute(codeWriter.toString());
+  }
+
+  @Test
+  public void testScalaSparkComputeRDD() throws Exception {
+    StringWriter codeWriter = new StringWriter();
+    try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
+      printer.println(
+        "def transform(rdd: RDD[StructuredRecord], context:SparkExecutionPluginContext) : RDD[StructuredRecord] = {");
+      printer.println("  val schema = context.getOutputSchema");
+      printer.println("  rdd");
+      printer.println("    .flatMap(_.get[String](\"body\").split(\"\\\\s+\"))");
+      printer.println("    .map(s => (s, 1L))");
+      printer.println("    .reduceByKey(_ + _)");
+      printer.println("    .map(t => StructuredRecord.builder(schema).set(\"word\", t._1).set(\"count\", t._2).build)");
+      printer.println("}");
+    }
+
+    testWordCountCompute(codeWriter.toString());
+  }
+
+  private void testWordCountCompute(String code) throws Exception {
+    Schema inputSchema = Schema.recordOf(
+      "input",
+      Schema.Field.of("body", Schema.nullableOf(Schema.of(Schema.Type.STRING)))
+    );
+
+    Schema computeSchema = Schema.recordOf(
+      "output",
+      Schema.Field.of("word", Schema.nullableOf(Schema.of(Schema.Type.STRING))),
+      Schema.Field.of("count", Schema.nullableOf(Schema.of(Schema.Type.LONG)))
+    );
+
+    String inputTable = UUID.randomUUID().toString();
+    String outputTable = UUID.randomUUID().toString();
+
     // Pipeline configuration
     ETLBatchConfig etlConfig = ETLBatchConfig.builder("* * * * *")
-      .addStage(new ETLStage("source", MockSource.getPlugin("singleInput", inputSchema)))
+      .addStage(new ETLStage("source", MockSource.getPlugin(inputTable, inputSchema)))
       .addStage(new ETLStage("compute", new ETLPlugin("ScalaSparkCompute", SparkCompute.PLUGIN_TYPE, ImmutableMap.of(
-        "scalaCode", codeWriter.toString(),
+        "scalaCode", code,
         "schema", computeSchema.toString()
       ))))
-      .addStage(new ETLStage("sink", MockSink.getPlugin("singleOutput")))
+      .addStage(new ETLStage("sink", MockSink.getPlugin(outputTable)))
       .addConnection("source", "compute")
       .addConnection("compute", "sink")
       .build();
@@ -308,11 +333,11 @@ public class ScalaSparkTest extends HydratorTestBase {
     ArtifactSummary artifactSummary = new ArtifactSummary(DATAPIPELINE_ARTIFACT_ID.getArtifact(),
                                                           DATAPIPELINE_ARTIFACT_ID.getVersion());
     AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
-    ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkComputeApp");
+    ApplicationId appId = NamespaceId.DEFAULT.app(UUID.randomUUID().toString());
     ApplicationManager appManager = deployApplication(appId, appRequest);
 
     // write records to source
-    DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset("singleInput"));
+    DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset(inputTable));
     List<StructuredRecord> inputRecords = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       inputRecords.add(StructuredRecord.builder(inputSchema).set("body", "Line " + i).build());
@@ -326,7 +351,7 @@ public class ScalaSparkTest extends HydratorTestBase {
 
     // Verify result written to sink.
     // It has two fields, word and count.
-    DataSetManager<Table> sinkManager = getDataset("singleOutput");
+    DataSetManager<Table> sinkManager = getDataset(outputTable);
     Map<String, StructuredRecord> wordCounts =
       Maps.uniqueIndex(Sets.newHashSet(MockSink.readOutput(sinkManager)), new Function<StructuredRecord, String>() {
         @Override
@@ -343,13 +368,28 @@ public class ScalaSparkTest extends HydratorTestBase {
   }
 
   @Test
-  public void testScalaSparkSink() throws Exception {
-    Schema inputSchema = Schema.recordOf(
-      "input",
-      Schema.Field.of("body", Schema.nullableOf(Schema.of(Schema.Type.STRING)))
-    );
+  public void testScalaSparkSinkRDD() throws Exception {
+    File testFolder = TEMP_FOLDER.newFolder("scalaSinkRDDOutput");
+    File outputFolder = new File(testFolder, "output");
+    StringWriter codeWriter = new StringWriter();
+    try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
+      printer.println(
+        "def sink(rdd: RDD[StructuredRecord], context:SparkExecutionPluginContext) : Unit = {");
+      printer.println("  val schema = context.getOutputSchema");
+      printer.println("  rdd");
+      printer.println("    .flatMap(_.get[String](\"body\").split(\"\\\\s+\"))");
+      printer.println("    .map(s => (s, 1L))");
+      printer.println("    .reduceByKey(_ + _)");
+      printer.println("    .map(t => t._1 + \" \" + t._2)");
+      printer.println("    .saveAsTextFile(\"" + outputFolder.getAbsolutePath() + "\")");
+      printer.println("}");
+    }
+    testWordCountSink(codeWriter.toString(), outputFolder);
+  }
 
-    File testFolder = TEMP_FOLDER.newFolder("scalaSinkOutput");
+  @Test
+  public void testScalaSparkSinkDataFrame() throws Exception {
+    File testFolder = TEMP_FOLDER.newFolder("scalaSinkDataframeOutput");
     File outputFolder = new File(testFolder, "output");
     StringWriter codeWriter = new StringWriter();
     try (PrintWriter printer = new PrintWriter(codeWriter, true)) {
@@ -363,12 +403,22 @@ public class ScalaSparkTest extends HydratorTestBase {
       printer.println("  out.write.format(\"text\").save(\"" + outputFolder.getAbsolutePath() + "\")");
       printer.println("}");
     }
+    testWordCountSink(codeWriter.toString(), outputFolder);
+  }
+
+  private void testWordCountSink(String code, File outputFolder) throws Exception {
+    Schema inputSchema = Schema.recordOf(
+      "input",
+      Schema.Field.of("body", Schema.nullableOf(Schema.of(Schema.Type.STRING)))
+    );
+
+    String inputTable = UUID.randomUUID().toString();
 
     // Pipeline configuration
     ETLBatchConfig etlConfig = ETLBatchConfig.builder("* * * * *")
-      .addStage(new ETLStage("source", MockSource.getPlugin("sinkInput", inputSchema)))
+      .addStage(new ETLStage("source", MockSource.getPlugin(inputTable, inputSchema)))
       .addStage(new ETLStage("sink", new ETLPlugin("ScalaSparkSink", SparkSink.PLUGIN_TYPE,
-                                                   ImmutableMap.of("scalaCode", codeWriter.toString()))))
+                                                   ImmutableMap.of("scalaCode", code))))
       .addConnection("source", "sink")
       .build();
 
@@ -376,11 +426,11 @@ public class ScalaSparkTest extends HydratorTestBase {
     ArtifactSummary artifactSummary = new ArtifactSummary(DATAPIPELINE_ARTIFACT_ID.getArtifact(),
                                                           DATAPIPELINE_ARTIFACT_ID.getVersion());
     AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, etlConfig);
-    ApplicationId appId = NamespaceId.DEFAULT.app("ScalaSparkSinkApp");
+    ApplicationId appId = NamespaceId.DEFAULT.app(UUID.randomUUID().toString());
     ApplicationManager appManager = deployApplication(appId, appRequest);
 
     // write records to source
-    DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset("sinkInput"));
+    DataSetManager<Table> inputManager = getDataset(NamespaceId.DEFAULT.dataset(inputTable));
     List<StructuredRecord> inputRecords = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       inputRecords.add(StructuredRecord.builder(inputSchema).set("body", "Line " + i).build());

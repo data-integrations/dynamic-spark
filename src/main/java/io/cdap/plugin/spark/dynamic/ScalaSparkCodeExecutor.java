@@ -99,12 +99,10 @@ public class ScalaSparkCodeExecutor {
 
         // Make sure it has a valid transform method
         Method method = getMethod(interpreter.getClassLoader(), className);
-
         // If the method takes DataFrame, make sure it has input schema
         if (isDataFrame(method.getParameterTypes()[0]) && inputSchema == null) {
           throw new IllegalArgumentException("Missing input schema for transformation using DataFrame");
         }
-
       } catch (CompilationFailureException e) {
         throw new IllegalArgumentException(e.getMessage(), e);
       } catch (IOException e) {

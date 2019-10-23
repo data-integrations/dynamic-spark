@@ -24,12 +24,12 @@ import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.schema.Schema;
 import io.cdap.cdap.api.plugin.PluginConfig;
 import io.cdap.cdap.api.spark.sql.DataFrames;
+import io.cdap.cdap.etl.api.FailureCollector;
 import io.cdap.cdap.etl.api.PipelineConfigurer;
 import io.cdap.cdap.etl.api.StageConfigurer;
 import io.cdap.cdap.etl.api.batch.SparkCompute;
 import io.cdap.cdap.etl.api.batch.SparkExecutionPluginContext;
 import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.types.DataType;
@@ -58,20 +58,27 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
   @Override
   public void configurePipeline(PipelineConfigurer pipelineConfigurer) throws IllegalArgumentException {
     StageConfigurer stageConfigurer = pipelineConfigurer.getStageConfigurer();
+    FailureCollector collector = stageConfigurer.getFailureCollector();
     try {
-      if (!config.containsMacro("schema")) {
+      if (!config.containsMacro(Config.SCHEMA)) {
         stageConfigurer.setOutputSchema(
           config.getSchema() == null ? stageConfigurer.getInputSchema() : Schema.parseJson(config.getSchema())
         );
       }
     } catch (IOException e) {
-      throw new IllegalArgumentException("Unable to parse output schema " + config.getSchema(), e);
+      collector.addFailure("Unable to parse output schema " + e.getMessage(), null)
+        .withStacktrace(e.getStackTrace()).withConfigProperty(Config.SCHEMA);
     }
 
     if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")
       && Boolean.TRUE.equals(config.getDeployCompile())) {
       codeExecutor = new ScalaSparkCodeExecutor(config.getScalaCode(), config.getDependencies(), "transform", false);
-      codeExecutor.configure(stageConfigurer.getInputSchema());
+      try {
+        codeExecutor.configure(stageConfigurer.getInputSchema());
+      } catch (Exception e) {
+        collector.addFailure(e.getMessage(), null).withConfigProperty(Config.SCALA_CODE)
+          .withStacktrace(e.getStackTrace());
+      }
     }
   }
 
@@ -97,16 +104,19 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     if (outputSchema == null) {
       // If there is no output schema configured, derive it from the DataFrame
       // Otherwise, assume the DataFrame has the correct schema already
-      outputSchema = DataFrames.toSchema((DataType) invokeDataFrameMethod(result, "schema"));
+      outputSchema = DataFrames.toSchema((DataType) ScalaSparkComputeUtil.invokeDataFrameMethod(result, "schema"));
     }
     //noinspection unchecked
-    return ((JavaRDD<Row>) invokeDataFrameMethod(result, "toJavaRDD")).map(new RowToRecord(outputSchema));
+    return ((JavaRDD<Row>) ScalaSparkComputeUtil.invokeDataFrameMethod(result, "toJavaRDD"))
+      .map(new ScalaSparkComputeUtil.RowToRecord(outputSchema));
   }
 
   /**
    * Configuration object for the plugin
    */
   public static final class Config extends PluginConfig {
+    private static final String SCHEMA = "schema";
+    private static final String SCALA_CODE = "scalaCode";
 
     @Description("Spark code in Scala defining how to transform RDD to RDD. " +
       "The code must implement a function " +
@@ -170,27 +180,5 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     public Boolean getDeployCompile() {
       return deployCompile;
     }
-  }
-
-  /**
-   * Function to map from {@link Row} to {@link StructuredRecord}.
-   */
-  public static final class RowToRecord implements Function<Row, StructuredRecord> {
-
-    private final Schema schema;
-
-    public RowToRecord(Schema schema) {
-      this.schema = schema;
-    }
-
-    @Override
-    public StructuredRecord call(Row row) {
-      return DataFrames.fromRow(row, schema);
-    }
-  }
-
-  private static <T> T invokeDataFrameMethod(Object dataFrame, String methodName) throws Exception {
-    //noinspection unchecked
-    return (T) dataFrame.getClass().getMethod(methodName).invoke(dataFrame);
   }
 }

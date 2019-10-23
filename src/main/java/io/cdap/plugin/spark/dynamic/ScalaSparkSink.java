@@ -22,6 +22,7 @@ import io.cdap.cdap.api.annotation.Name;
 import io.cdap.cdap.api.annotation.Plugin;
 import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.plugin.PluginConfig;
+import io.cdap.cdap.etl.api.FailureCollector;
 import io.cdap.cdap.etl.api.PipelineConfigurer;
 import io.cdap.cdap.etl.api.StageConfigurer;
 import io.cdap.cdap.etl.api.batch.SparkExecutionPluginContext;
@@ -55,10 +56,16 @@ public class ScalaSparkSink extends SparkSink<StructuredRecord> {
   @Override
   public void configurePipeline(PipelineConfigurer pipelineConfigurer) throws IllegalArgumentException {
     StageConfigurer stageConfigurer = pipelineConfigurer.getStageConfigurer();
+    FailureCollector collector = stageConfigurer.getFailureCollector();
     if (!config.containsMacro("scalaCode") && !config.containsMacro("dependencies")
       && Boolean.TRUE.equals(config.getDeployCompile())) {
       codeExecutor = new ScalaSparkCodeExecutor(config.getScalaCode(), config.getDependencies(), "sink", true);
-      codeExecutor.configure(stageConfigurer.getInputSchema());
+      try {
+        codeExecutor.configure(stageConfigurer.getInputSchema());
+      } catch (Exception e) {
+        collector.addFailure(e.getMessage(), null).withConfigProperty(Config.SCALA_CODE)
+          .withStacktrace(e.getStackTrace());
+      }
     }
   }
 
@@ -78,6 +85,7 @@ public class ScalaSparkSink extends SparkSink<StructuredRecord> {
    * Configuration object for the plugin
    */
   public static final class Config extends PluginConfig {
+    private static final String SCALA_CODE = "scalaCode";
 
     @Description("Spark code in Scala defining what operations to perform. " +
       "The code must implement a function " +

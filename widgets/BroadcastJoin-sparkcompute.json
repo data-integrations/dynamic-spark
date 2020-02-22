@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "spec-version": "1.4"
+  },
+  "configuration-groups": [
+    {
+      "label": "Basic",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter",
+          "widget-attributes": {
+            "default": ","
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn"
+        },
+        {
+          "widget-type": "select",
+          "label": "Join Type",
+          "name": "joinType",
+          "widget-attributes": {
+            "values": [
+              "inner",
+              "outer",
+              "leftouter",
+              "rightouter"
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          },
+          "plugin-function": {
+            "label": "Get Schema",
+            "widget": "outputSchema",
+            "output-property": "schema",
+            "omit-properties": [
+              {
+                "name": "schema"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "outputs": [ ]
+}

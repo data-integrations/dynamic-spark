@@ -64,10 +64,12 @@ import org.junit.rules.TemporaryFolder;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -404,6 +406,67 @@ public class ScalaSparkTest extends HydratorTestBase {
       printer.println("}");
     }
     testWordCountSink(codeWriter.toString(), outputFolder);
+  }
+
+  @Test
+  public void testBroadcastJoin() throws Exception  {
+    File smallDataset = TEMP_FOLDER.newFile("smallDataset.csv");
+
+    try (FileWriter fileWriter = new FileWriter(smallDataset)) {
+      fileWriter.write("0|;|alice\n");
+      fileWriter.write("1|;|bob\n");
+    }
+
+    Schema schema = Schema.recordOf("purchases",
+                                    Schema.Field.of("userid", Schema.of(Schema.Type.INT)),
+                                    Schema.Field.of("itemid", Schema.of(Schema.Type.LONG)),
+                                    Schema.Field.of("itemname", Schema.of(Schema.Type.STRING)),
+                                    Schema.Field.of("price", Schema.of(Schema.Type.DOUBLE)));
+
+    Map<String, String> properties = new HashMap<>();
+    properties.put("path", smallDataset.getAbsolutePath());
+    properties.put("datasetSchema", "userid int, username string");
+    properties.put("delimiter", "|;|");
+    properties.put("joinOn", "userid");
+    String inputTableName = UUID.randomUUID().toString();
+    String outputTableName = UUID.randomUUID().toString();
+    ETLBatchConfig config = ETLBatchConfig.builder()
+      .addStage(new ETLStage("src", MockSource.getPlugin(inputTableName, schema)))
+      .addStage(new ETLStage("join", new ETLPlugin(BroadcastJoin.NAME, SparkCompute.PLUGIN_TYPE, properties)))
+      .addStage(new ETLStage("sink", MockSink.getPlugin(outputTableName)))
+      .addConnection("src", "join")
+      .addConnection("join", "sink")
+      .build();
+
+    ArtifactSummary artifactSummary = new ArtifactSummary(DATAPIPELINE_ARTIFACT_ID.getArtifact(),
+                                                          DATAPIPELINE_ARTIFACT_ID.getVersion());
+    AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, config);
+    ApplicationId appId = NamespaceId.DEFAULT.app("testBroadcastJoin");
+    ApplicationManager appManager = deployApplication(appId, appRequest);
+
+    // setup input data
+    StructuredRecord record = StructuredRecord.builder(schema)
+      .set("userid", 0)
+      .set("itemid", 1000L)
+      .set("itemname", "donut")
+      .set("price", 1.0d)
+      .build();
+    List<StructuredRecord> inputRecords = Arrays.asList(record);
+    DataSetManager<Table> inputTableManager = getDataset(inputTableName);
+    MockSource.writeInput(inputTableManager, inputRecords);
+
+    WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
+    workflowManager.startAndWaitForRun(ProgramRunStatus.COMPLETED, 3, TimeUnit.MINUTES);
+
+    DataSetManager<Table> outputTableManager = getDataset(outputTableName);
+    List<StructuredRecord> output = MockSink.readOutput(outputTableManager);
+    Assert.assertEquals(1, output.size());
+    StructuredRecord joined = output.iterator().next();
+    Assert.assertEquals(0, (int) joined.get("userid"));
+    Assert.assertEquals("donut", joined.get("itemname"));
+    Assert.assertEquals(1.0d, (double) joined.get("price"), 0.000001);
+    Assert.assertEquals(1000L, (long) joined.get("itemid"));
+    Assert.assertEquals("alice", joined.get("username"));
   }
 
   private void testWordCountSink(String code, File outputFolder) throws Exception {

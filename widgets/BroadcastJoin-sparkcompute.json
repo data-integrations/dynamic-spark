@@ -7,32 +7,28 @@
       "label": "Basic",
       "properties": [
         {
-          "widget-type": "textbox",
-          "label": "Delimiter",
-          "name": "delimiter",
-          "widget-attributes": {
-            "default": ","
-          }
-        },
-        {
-          "widget-type": "csv",
-          "label": "Join Keys",
-          "name": "joinOn"
-        },
-        {
           "widget-type": "select",
-          "label": "Join Type",
-          "name": "joinType",
+          "label": "Number of Joins",
+          "name": "numJoins",
           "widget-attributes": {
             "values": [
-              "inner",
-              "outer",
-              "leftouter",
-              "rightouter"
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8"
             ],
-            "default": "inner"
+            "default": "1"
           }
-        },
+        }
+      ]
+    },
+    {
+      "label": "Dataset 1",
+      "properties": [
         {
           "widget-type": "textbox",
           "label": "Path to Lookup Data",
@@ -56,6 +52,38 @@
               "float",
               "double"
             ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter",
+          "widget-attributes": {
+            "default": ","
           },
           "plugin-function": {
             "label": "Get Schema",
@@ -69,7 +97,534 @@
           }
         }
       ]
+    },
+    {
+      "label": "Dataset 2",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path2",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema2",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn2"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType2",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter2",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
+    },
+    {
+      "label": "Dataset 3",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path3",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema3",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn3"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType3",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter3",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
+    },
+    {
+      "label": "Dataset 4",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path4",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema4",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn4"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType4",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter4",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
+    },
+    {
+      "label": "Dataset 5",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path5",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema5",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn5"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType5",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter5",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
+    },
+    {
+      "label": "Dataset 6",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path6",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema6",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn6"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType6",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter6",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
+    },
+    {
+      "label": "Dataset 7",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path7",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema7",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn7"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType7",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter7",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
+    },
+    {
+      "label": "Dataset 8",
+      "properties": [
+        {
+          "widget-type": "textbox",
+          "label": "Path to Lookup Data",
+          "name": "path8",
+          "widget-attributes": {
+            "placeholder": "gs://bucket/path/to/file"
+          }
+        },
+        {
+          "widget-type": "keyvalue-dropdown",
+          "label": "Lookup Data Schema",
+          "name": "datasetSchema8",
+          "widget-attributes": {
+            "delimiter": ",",
+            "kv-delimiter": " ",
+            "dropdownOptions": [
+              "string",
+              "boolean",
+              "int",
+              "long",
+              "float",
+              "double"
+            ]
+          }
+        },
+        {
+          "widget-type": "csv",
+          "label": "Join Keys",
+          "name": "joinOn8"
+        },
+        {
+          "widget-type": "radio-group",
+          "label": "Join Type",
+          "name": "joinType8",
+          "widget-attributes": {
+            "layout": "inline",
+            "options": [
+              {
+                "id": "inner",
+                "label": "Inner"
+              },
+              {
+                "id": "leftouter",
+                "label": "Left Outer"
+              }
+            ],
+            "default": "inner"
+          }
+        },
+        {
+          "widget-type": "textbox",
+          "label": "Delimiter",
+          "name": "delimiter8",
+          "widget-attributes": {
+            "default": ","
+          }
+        }
+      ]
     }
   ],
-  "outputs": [ ]
+  "outputs": [ ],
+  "filters": [
+    {
+      "name": "Dataset2",
+      "condition": {
+        "expression": "numJoins > 1"
+      },
+      "show": [
+        { "name": "delimiter2" },
+        { "name": "joinOn2" },
+        { "name": "joinType2" },
+        { "name": "path2" },
+        { "name": "datasetSchema2" }
+      ]
+    },
+    {
+      "name": "Dataset3",
+      "condition": {
+        "expression": "numJoins > 2"
+      },
+      "show": [
+        { "name": "delimiter3" },
+        { "name": "joinOn3" },
+        { "name": "joinType3" },
+        { "name": "path3" },
+        { "name": "datasetSchema3" }
+      ]
+    },
+    {
+      "name": "Dataset4",
+      "condition": {
+        "expression": "numJoins > 3"
+      },
+      "show": [
+        { "name": "delimiter4" },
+        { "name": "joinOn4" },
+        { "name": "joinType4" },
+        { "name": "path4" },
+        { "name": "datasetSchema4" }
+      ]
+    },
+    {
+      "name": "Dataset5",
+      "condition": {
+        "expression": "numJoins > 4"
+      },
+      "show": [
+        { "name": "delimiter5" },
+        { "name": "joinOn5" },
+        { "name": "joinType5" },
+        { "name": "path5" },
+        { "name": "datasetSchema5" }
+      ]
+    },
+    {
+      "name": "Dataset6",
+      "condition": {
+        "expression": "numJoins > 5"
+      },
+      "show": [
+        { "name": "delimiter6" },
+        { "name": "joinOn6" },
+        { "name": "joinType6" },
+        { "name": "path6" },
+        { "name": "datasetSchema6" }
+      ]
+    },
+    {
+      "name": "Dataset7",
+      "condition": {
+        "expression": "numJoins > 6"
+      },
+      "show": [
+        { "name": "delimiter7" },
+        { "name": "joinOn7" },
+        { "name": "joinType7" },
+        { "name": "path7" },
+        { "name": "datasetSchema7" }
+      ]
+    },
+    {
+      "name": "Dataset8",
+      "condition": {
+        "expression": "numJoins > 7"
+      },
+      "show": [
+        { "name": "delimiter8" },
+        { "name": "joinOn8" },
+        { "name": "joinType8" },
+        { "name": "path8" },
+        { "name": "datasetSchema8" }
+      ]
+    }
+  ]
 }

@@ -61,40 +61,35 @@ public class BroadcastJoin extends SparkCompute<StructuredRecord, StructuredReco
     }
 
     FailureCollector failureCollector = stageConfigurer.getFailureCollector();
-    // TODO: validation on schema parsing
-    Schema smallDatasetSchema = config.getSmallDatasetSchema();
-
-    for (Schema.Field field : smallDatasetSchema.getFields()) {
-      Schema.Type fieldType = field.getSchema().getNonNullable().getType();
-      if (!SUPPORTED_TYPES.contains(fieldType)) {
-        failureCollector.addFailure(String.format("Field '%s' is an unsupported type", field.getName()), "")
-          .withConfigElement("schema", field.getName() + fieldType.name().toLowerCase());
+    List<DatasetJoinInfo> datasetJoins = config.getDatasetsToJoin();
+    Schema schema = inputSchema;
+    for (DatasetJoinInfo joinInfo : datasetJoins) {
+      for (String joinKey : joinInfo.getJoinKeys()) {
+        if (schema.getField(joinKey) == null) {
+          failureCollector.addFailure("Join key does not exist in the schema.", "")
+            .withConfigElement("joinOn" + joinInfo.getNum(), joinKey);
+        }
       }
+      schema = joinSchemas(schema, joinInfo.getSchema(), joinInfo.getJoinKeys());
     }
+    stageConfigurer.setOutputSchema(schema);
+  }
 
-    List<String> joinKeys = config.getJoinKeys();
-    for (String joinKey : joinKeys) {
-      if (inputSchema.getField(joinKey) == null) {
-        failureCollector.addFailure("Join key does not exist in the input schema.",
-                                    "Select join keys that exists in both the input schema and small dataset schema.")
-          .withConfigElement("joinOn", joinKey);
-      } else if (smallDatasetSchema.getField(joinKey) == null) {
-        failureCollector.addFailure("Join key does not exist in the small dataset schema.",
-                                    "Select join keys that exists in both the input schema and small dataset schema.")
-          .withConfigElement("joinOn", joinKey);
-      }
-    }
-    failureCollector.getOrThrowException();
-
-    List<Schema.Field> fields = new ArrayList<>();
-    fields.addAll(inputSchema.getFields());
-    for (Schema.Field field : smallDatasetSchema.getFields()) {
+  private Schema joinSchemas(Schema schema1, Schema schema2, Set<String> joinKeys) {
+    List<Schema.Field> fields =
+      new ArrayList<>(schema1.getFields().size() + schema2.getFields().size() - joinKeys.size());
+    fields.addAll(schema1.getFields());
+    for (Schema.Field field : schema2.getFields()) {
       if (joinKeys.contains(field.getName())) {
         continue;
       }
-      fields.add(field);
+      if (field.getSchema().isNullable()) {
+        fields.add(field);
+      } else {
+        fields.add(Schema.Field.of(field.getName(), Schema.nullableOf(field.getSchema())));
+      }
     }
-    stageConfigurer.setOutputSchema(Schema.recordOf(inputSchema.getRecordName() + ".joined", fields));
+    return Schema.recordOf("joined", fields);
   }
 
   @Override

@@ -410,11 +410,16 @@ public class ScalaSparkTest extends HydratorTestBase {
 
   @Test
   public void testBroadcastJoin() throws Exception  {
-    File smallDataset = TEMP_FOLDER.newFile("smallDataset.csv");
+    File smallDataset1 = TEMP_FOLDER.newFile("smallDataset1.csv");
+    File smallDataset2 = TEMP_FOLDER.newFile("smallDataset2.csv");
 
-    try (FileWriter fileWriter = new FileWriter(smallDataset)) {
+    try (FileWriter fileWriter = new FileWriter(smallDataset1)) {
       fileWriter.write("0|;|alice\n");
       fileWriter.write("1|;|bob\n");
+    }
+    try (FileWriter fileWriter = new FileWriter(smallDataset2)) {
+      fileWriter.write("alice,morgan\n");
+      fileWriter.write("bob,vance\n");
     }
 
     Schema schema = Schema.recordOf("purchases",
@@ -424,10 +429,14 @@ public class ScalaSparkTest extends HydratorTestBase {
                                     Schema.Field.of("price", Schema.of(Schema.Type.DOUBLE)));
 
     Map<String, String> properties = new HashMap<>();
-    properties.put("path", smallDataset.getAbsolutePath());
+    properties.put("numJoins", "2");
+    properties.put("path", smallDataset1.getAbsolutePath());
     properties.put("datasetSchema", "userid int, username string");
     properties.put("delimiter", "|;|");
     properties.put("joinOn", "userid");
+    properties.put("path2", smallDataset2.getAbsolutePath());
+    properties.put("datasetSchema2", "username string, lastname string");
+    properties.put("joinOn2", "username");
     String inputTableName = UUID.randomUUID().toString();
     String outputTableName = UUID.randomUUID().toString();
     ETLBatchConfig config = ETLBatchConfig.builder()
@@ -467,6 +476,7 @@ public class ScalaSparkTest extends HydratorTestBase {
     Assert.assertEquals(1.0d, (double) joined.get("price"), 0.000001);
     Assert.assertEquals(1000L, (long) joined.get("itemid"));
     Assert.assertEquals("alice", joined.get("username"));
+    Assert.assertEquals("morgan", joined.get("lastname"));
   }
 
   private void testWordCountSink(String code, File outputFolder) throws Exception {

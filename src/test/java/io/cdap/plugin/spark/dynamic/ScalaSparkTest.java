@@ -479,6 +479,85 @@ public class ScalaSparkTest extends HydratorTestBase {
     Assert.assertEquals("morgan", joined.get("lastname"));
   }
 
+  @Test
+  public void testBroadcastJoinMacros() throws Exception  {
+    File smallDataset1 = TEMP_FOLDER.newFile("smallDataset1.csv");
+    File smallDataset2 = TEMP_FOLDER.newFile("smallDataset2.csv");
+
+    try (FileWriter fileWriter = new FileWriter(smallDataset1)) {
+      fileWriter.write("0|;|alice\n");
+      fileWriter.write("1|;|bob\n");
+    }
+    try (FileWriter fileWriter = new FileWriter(smallDataset2)) {
+      fileWriter.write("alice,morgan\n");
+      fileWriter.write("bob,vance\n");
+    }
+
+    Schema schema = Schema.recordOf("purchases",
+                                    Schema.Field.of("userid", Schema.of(Schema.Type.INT)),
+                                    Schema.Field.of("itemid", Schema.of(Schema.Type.LONG)),
+                                    Schema.Field.of("itemname", Schema.of(Schema.Type.STRING)),
+                                    Schema.Field.of("price", Schema.of(Schema.Type.DOUBLE)));
+
+    Map<String, String> properties = new HashMap<>();
+    properties.put("numJoins", "2");
+    properties.put("path", "${path1}");
+    properties.put("datasetSchema", "${schema1}");
+    properties.put("delimiter", "|;|");
+    properties.put("joinOn", "${joinOn1}");
+    properties.put("path2", "${path2}");
+    properties.put("datasetSchema2", "${schema2}");
+    properties.put("joinOn2", "${joinOn2}");
+    String inputTableName = UUID.randomUUID().toString();
+    String outputTableName = UUID.randomUUID().toString();
+    ETLBatchConfig config = ETLBatchConfig.builder()
+      .addStage(new ETLStage("src", MockSource.getPlugin(inputTableName, schema)))
+      .addStage(new ETLStage("join", new ETLPlugin(BroadcastJoin.NAME, SparkCompute.PLUGIN_TYPE, properties)))
+      .addStage(new ETLStage("sink", MockSink.getPlugin(outputTableName)))
+      .addConnection("src", "join")
+      .addConnection("join", "sink")
+      .build();
+
+    ArtifactSummary artifactSummary = new ArtifactSummary(DATAPIPELINE_ARTIFACT_ID.getArtifact(),
+                                                          DATAPIPELINE_ARTIFACT_ID.getVersion());
+    AppRequest<ETLBatchConfig> appRequest = new AppRequest<>(artifactSummary, config);
+    ApplicationId appId = NamespaceId.DEFAULT.app("testBroadcastJoin");
+    ApplicationManager appManager = deployApplication(appId, appRequest);
+
+    // setup input data
+    StructuredRecord record = StructuredRecord.builder(schema)
+      .set("userid", 0)
+      .set("itemid", 1000L)
+      .set("itemname", "donut")
+      .set("price", 1.0d)
+      .build();
+    List<StructuredRecord> inputRecords = Arrays.asList(record);
+    DataSetManager<Table> inputTableManager = getDataset(inputTableName);
+    MockSource.writeInput(inputTableManager, inputRecords);
+
+    Map<String, String> runtimeArgs = new HashMap<>();
+    runtimeArgs.put("path1", smallDataset1.getAbsolutePath());
+    runtimeArgs.put("schema1", "userid int, username string");
+    runtimeArgs.put("joinOn1", "userid");
+    runtimeArgs.put("path2", smallDataset2.getAbsolutePath());
+    runtimeArgs.put("schema2", "username string, lastname string");
+    runtimeArgs.put("joinOn2", "username");
+
+    WorkflowManager workflowManager = appManager.getWorkflowManager(SmartWorkflow.NAME);
+    workflowManager.startAndWaitForRun(runtimeArgs, ProgramRunStatus.COMPLETED, 3, TimeUnit.MINUTES);
+
+    DataSetManager<Table> outputTableManager = getDataset(outputTableName);
+    List<StructuredRecord> output = MockSink.readOutput(outputTableManager);
+    Assert.assertEquals(1, output.size());
+    StructuredRecord joined = output.iterator().next();
+    Assert.assertEquals(0, (int) joined.get("userid"));
+    Assert.assertEquals("donut", joined.get("itemname"));
+    Assert.assertEquals(1.0d, (double) joined.get("price"), 0.000001);
+    Assert.assertEquals(1000L, (long) joined.get("itemid"));
+    Assert.assertEquals("alice", joined.get("username"));
+    Assert.assertEquals("morgan", joined.get("lastname"));
+  }
+
   private void testWordCountSink(String code, File outputFolder) throws Exception {
     Schema inputSchema = Schema.recordOf(
       "input",

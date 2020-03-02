@@ -55,7 +55,7 @@ public class BroadcastJoin extends SparkCompute<StructuredRecord, StructuredReco
   public void configurePipeline(PipelineConfigurer pipelineConfigurer) {
     StageConfigurer stageConfigurer = pipelineConfigurer.getStageConfigurer();
     Schema inputSchema = stageConfigurer.getInputSchema();
-    if (inputSchema == null) {
+    if (inputSchema == null || !config.canCalculateOutputSchema()) {
       stageConfigurer.setOutputSchema(null);
       return;
     }

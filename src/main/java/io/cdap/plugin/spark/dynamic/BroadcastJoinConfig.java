@@ -48,12 +48,15 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter;
 
+  @Macro
   @Description("Schema of small dataset")
   private String datasetSchema;
 
+  @Macro
   @Description("Keys to join on")
   private String joinOn;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType;
@@ -74,14 +77,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter2;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema2;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn2;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType2;
@@ -100,14 +106,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter3;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema3;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn3;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType3;
@@ -126,14 +135,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter4;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema4;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn4;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType4;
@@ -152,14 +164,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter5;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema5;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn5;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType5;
@@ -178,14 +193,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter6;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema6;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn6;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType6;
@@ -204,14 +222,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter7;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema7;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn7;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType7;
@@ -230,14 +251,17 @@ public class BroadcastJoinConfig extends PluginConfig {
   @Description("Delimiter used in the small dataset")
   private String delimiter8;
 
+  @Macro
   @Nullable
   @Description("Schema of small dataset")
   private String datasetSchema8;
 
+  @Macro
   @Nullable
   @Description("Keys to join on")
   private String joinOn8;
 
+  @Macro
   @Nullable
   @Description("Type of join")
   private String joinType8;
@@ -248,6 +272,21 @@ public class BroadcastJoinConfig extends PluginConfig {
       datasetJoinInfos.add(getJoinInfo(i + 1));
     }
     return datasetJoinInfos;
+  }
+
+  /**
+   * @return whether the output schema can be calculated without macro evaluation.
+   */
+  public boolean canCalculateOutputSchema() {
+    for (int i = 0; i < numJoins; i++) {
+      String pathName = getPropertyName("path", i);
+      String schemaName = getPropertyName("datasetSchema", i);
+      String joinOnName = getPropertyName("joinOn", i);
+      if (containsMacro(pathName) || containsMacro(schemaName) || containsMacro(joinOnName)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private DatasetJoinInfo getJoinInfo(int datasetNum) {

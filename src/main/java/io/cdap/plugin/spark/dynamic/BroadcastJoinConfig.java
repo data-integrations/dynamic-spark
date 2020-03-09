@@ -279,10 +279,9 @@ public class BroadcastJoinConfig extends PluginConfig {
    */
   public boolean canCalculateOutputSchema() {
     for (int i = 0; i < numJoins; i++) {
-      String pathName = getPropertyName("path", i);
       String schemaName = getPropertyName("datasetSchema", i);
       String joinOnName = getPropertyName("joinOn", i);
-      if (containsMacro(pathName) || containsMacro(schemaName) || containsMacro(joinOnName)) {
+      if (containsMacro(schemaName) || containsMacro(joinOnName)) {
         return false;
       }
     }
@@ -291,8 +290,9 @@ public class BroadcastJoinConfig extends PluginConfig {
 
   private DatasetJoinInfo getJoinInfo(int datasetNum) {
     Map<String, String> rawProperties = getProperties().getProperties();
-    String path = rawProperties.get(getPropertyName("path", datasetNum));
-    if (path == null) {
+    String pathNameStr = getPropertyName("path", datasetNum);
+    String path = rawProperties.get(pathNameStr);
+    if (!containsMacro(pathNameStr) && path == null) {
       throw new IllegalArgumentException("Path for Dataset " + datasetNum + " must be specified.");
     }
 

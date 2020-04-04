@@ -28,6 +28,8 @@ import io.cdap.cdap.etl.api.PipelineConfigurer;
 import io.cdap.cdap.etl.api.StageConfigurer;
 import io.cdap.cdap.etl.api.batch.SparkCompute;
 import io.cdap.cdap.etl.api.batch.SparkExecutionPluginContext;
+import io.cdap.cdap.etl.api.batch.SparkPluginContext;
+import io.cdap.plugin.common.TransformLineageRecorderUtils;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.rdd.RDD;
@@ -80,6 +82,16 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
     codeExecutor = new ScalaSparkCodeExecutor(config.getScalaCode(), config.getDependencies(), "transform", false);
     codeExecutor.initialize(context);
     isRDD = !codeExecutor.isDataFrame();
+  }
+
+  @Override
+  public void prepareRun(SparkPluginContext context) throws Exception {
+    super.prepareRun(context);
+    Schema outSchema = config.schema == null ? context.getInputSchema() : Schema.parseJson(config.schema);
+    context.record(TransformLineageRecorderUtils.generateManyToMany(
+      TransformLineageRecorderUtils.getFields(context.getInputSchema()),
+      TransformLineageRecorderUtils.getFields(outSchema), "sparkCompute",
+      "Transformed fields according to spark computation"));
   }
 
   @Override

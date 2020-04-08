@@ -418,7 +418,9 @@ public class ScalaSparkTest extends HydratorTestBase {
     ETLBatchConfig etlConfig = ETLBatchConfig.builder("* * * * *")
       .addStage(new ETLStage("source", MockSource.getPlugin(inputTable, inputSchema)))
       .addStage(new ETLStage("sink", new ETLPlugin("ScalaSparkSink", SparkSink.PLUGIN_TYPE,
-                                                   ImmutableMap.of("scalaCode", code))))
+                                                   ImmutableMap.of(
+                                                     "scalaCode", code,
+                                                     "referenceName", "sink"))))
       .addConnection("source", "sink")
       .build();
 

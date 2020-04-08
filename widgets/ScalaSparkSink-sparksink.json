@@ -8,6 +8,14 @@
       "label": "Spark Scala",
       "properties": [
         {
+          "widget-type": "textbox",
+          "label": "Reference Name",
+          "name": "referenceName",
+          "widget-attributes": {
+            "placeholder": "Name used to identify this source for lineage"
+          }
+        },
+        {
           "widget-type": "scala-editor",
           "label": "Scala",
           "name": "scalaCode",
@@ -31,5 +39,12 @@
         }
       ]
     }
-  ]
+  ],
+  "jump-config": {
+    "datasets": [
+      {
+        "ref-property-name": "referenceName"
+      }
+    ]
+  }
 }

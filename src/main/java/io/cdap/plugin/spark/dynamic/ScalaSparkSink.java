@@ -21,16 +21,20 @@ import io.cdap.cdap.api.annotation.Macro;
 import io.cdap.cdap.api.annotation.Name;
 import io.cdap.cdap.api.annotation.Plugin;
 import io.cdap.cdap.api.data.format.StructuredRecord;
+import io.cdap.cdap.api.data.schema.Schema;
 import io.cdap.cdap.api.plugin.PluginConfig;
 import io.cdap.cdap.etl.api.PipelineConfigurer;
 import io.cdap.cdap.etl.api.StageConfigurer;
 import io.cdap.cdap.etl.api.batch.SparkExecutionPluginContext;
 import io.cdap.cdap.etl.api.batch.SparkPluginContext;
 import io.cdap.cdap.etl.api.batch.SparkSink;
+import io.cdap.plugin.common.LineageRecorder;
 import org.apache.spark.api.java.JavaRDD;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
 /**
@@ -64,7 +68,10 @@ public class ScalaSparkSink extends SparkSink<StructuredRecord> {
 
   @Override
   public void prepareRun(SparkPluginContext sparkPluginContext) throws Exception {
-    // no-op
+    Schema schema = sparkPluginContext.getInputSchema();
+    if (schema != null && schema.getFields() != null) {
+      recordLineage(sparkPluginContext, config.referenceName, schema, "Write", "Wrote to Scala Spark Sink.");
+    }
   }
 
   @Override
@@ -109,11 +116,16 @@ public class ScalaSparkSink extends SparkSink<StructuredRecord> {
     @Nullable
     private final Boolean deployCompile;
 
-    public Config(String scalaCode, @Nullable String dependencies,
-                  @Nullable Boolean deployCompile) {
+    @Name("referenceName")
+    @Description("This will be used to uniquely identify this source/sink for lineage, annotating metadata, etc.")
+    public String referenceName;
+
+    public Config(String scalaCode, @Nullable String dependencies, @Nullable Boolean deployCompile,
+                  String referenceName) {
       this.scalaCode = scalaCode;
       this.dependencies = dependencies;
       this.deployCompile = deployCompile;
+      this.referenceName = referenceName;
     }
 
     public String getScalaCode() {
@@ -128,6 +140,20 @@ public class ScalaSparkSink extends SparkSink<StructuredRecord> {
     @Nullable
     public Boolean getDeployCompile() {
       return deployCompile;
+    }
+
+    public String getReferenceName() {
+      return referenceName;
+    }
+  }
+
+  private void recordLineage(SparkPluginContext context, String outputName, Schema tableSchema, String operationName,
+                             String description) {
+    LineageRecorder lineageRecorder = new LineageRecorder(context, outputName);
+    lineageRecorder.createExternalDataset(tableSchema);
+    List<String> fieldNames = tableSchema.getFields().stream().map(Schema.Field::getName).collect(Collectors.toList());
+    if (!fieldNames.isEmpty()) {
+      lineageRecorder.recordWrite(operationName, description, fieldNames);
     }
   }
 }

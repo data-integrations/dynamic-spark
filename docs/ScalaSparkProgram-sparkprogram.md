@@ -13,14 +13,14 @@ Properties
 **mainClass** The fully qualified class name for the Spark application.
 It must either be an ``object`` that has a ``main`` method define inside, with the method signature as 
 ``def main(args: Array[String]): Unit``; or it is a class that extends from the CDAP 
-``co.cask.cdap.api.spark.SparkMain`` trait that implements the ``run`` method, with the method signature as
+``io.cdap.cdap.api.spark.SparkMain`` trait that implements the ``run`` method, with the method signature as
 ``def run(implicit sec: SparkExecutionContext): Unit``
 
 **scalaCode** The self-contained Spark application written in Scala.
 For example, an application that reads from CDAP stream with name ``streamName``, 
 performs a simple word count logic and logs the result can be written as:
 
-    import co.cask.cdap.api.spark._
+    import io.cdap.cdap.api.spark._
     import org.apache.spark._
     import org.slf4j._
 

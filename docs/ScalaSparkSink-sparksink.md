@@ -45,9 +45,9 @@ This will perform a word count on the input field ``'body'``, then write out the
 
 The following imports are included automatically and are ready for the user code to use:
 
-      import co.cask.cdap.api.data.format._
-      import co.cask.cdap.api.data.schema._;
-      import co.cask.cdap.etl.api.batch._
+      import io.cdap.cdap.api.data.format._
+      import io.cdap.cdap.api.data.schema._;
+      import io.cdap.cdap.etl.api.batch._
       import org.apache.spark._
       import org.apache.spark.api.java._
       import org.apache.spark.rdd._

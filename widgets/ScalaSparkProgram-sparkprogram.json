@@ -19,7 +19,7 @@
           "label": "Scala",
           "name": "scalaCode",
           "widget-attributes": {
-            "default": "import co.cask.cdap.api.spark._\nimport org.apache.spark._\nimport org.slf4j._\n\nclass SparkProgram extends SparkMain {\n  import SparkProgram._\n\n  override def run(implicit sec: SparkExecutionContext): Unit = {\n    LOG.info(\"Spark Program Started\")\n\n    val sc = new SparkContext\n\n    LOG.info(\"Spark Program Completed\")\n  }\n}\n\nobject SparkProgram {\n  val LOG = LoggerFactory.getLogger(getClass())\n}"
+            "default": "import io.cdap.cdap.api.spark._\nimport org.apache.spark._\nimport org.slf4j._\n\nclass SparkProgram extends SparkMain {\n  import SparkProgram._\n\n  override def run(implicit sec: SparkExecutionContext): Unit = {\n    LOG.info(\"Spark Program Started\")\n\n    val sc = new SparkContext\n\n    LOG.info(\"Spark Program Completed\")\n  }\n}\n\nobject SparkProgram {\n  val LOG = LoggerFactory.getLogger(getClass())\n}"
           }
         },
         {

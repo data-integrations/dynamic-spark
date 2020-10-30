@@ -24,6 +24,7 @@ import io.cdap.cdap.api.data.format.StructuredRecord;
 import io.cdap.cdap.api.data.schema.Schema;
 import io.cdap.cdap.api.plugin.PluginConfig;
 import io.cdap.cdap.api.spark.sql.DataFrames;
+import io.cdap.cdap.etl.api.FailureCollector;
 import io.cdap.cdap.etl.api.PipelineConfigurer;
 import io.cdap.cdap.etl.api.StageConfigurer;
 import io.cdap.cdap.etl.api.batch.SparkCompute;
@@ -98,6 +99,13 @@ public class ScalaSparkCompute extends SparkCompute<StructuredRecord, Structured
       // If there is no output schema configured, derive it from the DataFrame
       // Otherwise, assume the DataFrame has the correct schema already
       outputSchema = DataFrames.toSchema((DataType) invokeDataFrameMethod(result, "schema"));
+    } else {
+      Schema dataSchema = DataFrames.toSchema((DataType) invokeDataFrameMethod(result, "schema"));
+      if (!dataSchema.isCompatible(outputSchema)) {
+        FailureCollector collector = context.getFailureCollector();
+        collector.addFailure("Schema mismatch.", "Output schema is not matching input schema.");
+        collector.getOrThrowException();
+      }
     }
     //noinspection unchecked
     return ((JavaRDD<Row>) invokeDataFrameMethod(result, "toJavaRDD")).map(new RowToRecord(outputSchema));
